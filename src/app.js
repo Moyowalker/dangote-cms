@@ -1,6 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
+const { doubleCsrf } = require('csrf-csrf');
 const path = require('path');
 const { initializeDatabase, getDb } = require('./database');
 
@@ -42,10 +43,30 @@ app.use(session({
   }
 }));
 
+const { generateToken, doubleCsrfProtection } = doubleCsrf({
+  getSecret: () => process.env.SESSION_SECRET || 'dangote-cms-secret-2024',
+  cookieName: 'csrf-token',
+  cookieOptions: {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  },
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+  getTokenFromRequest: (req) => req.headers['x-csrf-token']
+});
+
+const csrfMiddleware = process.env.NODE_ENV === 'test'
+  ? (req, res, next) => next()
+  : doubleCsrfProtection;
+
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/csrf-token', (req, res) => {
+  res.json({ csrfToken: generateToken(req, res) });
+});
 
 app.use('/api/auth/login', loginLimiter);
 app.use('/api', apiLimiter);
+app.use('/api', csrfMiddleware);
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api', mealRoutes);

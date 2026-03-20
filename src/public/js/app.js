@@ -1,11 +1,19 @@
 const API_BASE = '/api';
 
 async function apiFetch(path, options = {}) {
+  // Include CSRF token for state-mutating requests
+  const method = (options.method || 'GET').toUpperCase();
+  const extraHeaders = {};
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+    if (tokenMeta) extraHeaders['X-CSRF-Token'] = tokenMeta.content;
+  }
   const response = await fetch(API_BASE + path, {
     ...options,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...extraHeaders,
       ...options.headers
     }
   });
@@ -47,6 +55,22 @@ if (!window.location.pathname.includes('index.html') && window.location.pathname
     }
   });
 }
+
+async function initCsrfToken() {
+  const res = await fetch('/api/csrf-token', { credentials: 'include' });
+  if (res.ok) {
+    const { csrfToken } = await res.json();
+    let meta = document.querySelector('meta[name="csrf-token"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'csrf-token';
+      document.head.appendChild(meta);
+    }
+    meta.content = csrfToken;
+  }
+}
+
+initCsrfToken();
 
 document.addEventListener('DOMContentLoaded', () => {
   const logoutBtn = document.getElementById('logout-btn');
