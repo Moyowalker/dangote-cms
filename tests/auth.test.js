@@ -1,15 +1,17 @@
 process.env.NODE_ENV = 'test';
 
+jest.mock('../src/database');
+
 const request = require('supertest');
 const app = require('../src/app');
 const { initializeDatabase, closeDatabase } = require('../src/database');
 
-beforeAll(() => {
-  initializeDatabase();
+beforeAll(async () => {
+  await initializeDatabase();
 });
 
-afterAll(() => {
-  closeDatabase();
+afterAll(async () => {
+  await closeDatabase();
 });
 
 describe('Auth Routes', () => {

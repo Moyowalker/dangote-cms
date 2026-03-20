@@ -1,25 +1,26 @@
 process.env.NODE_ENV = 'test';
 
+jest.mock('../src/database');
+
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, getDb } = require('../src/database');
+const { initializeDatabase, closeDatabase, MealPlan, MenuItem } = require('../src/database');
 
 let agent;
 
-beforeAll(() => {
-  initializeDatabase();
+beforeAll(async () => {
+  await initializeDatabase();
   agent = request.agent(app);
 });
 
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
-  const db = getDb();
-  db.prepare('DELETE FROM menu_items').run();
-  db.prepare('DELETE FROM meal_plans').run();
+  await MenuItem.deleteMany({});
+  await MealPlan.deleteMany({});
 });
 
-afterAll(() => {
-  closeDatabase();
+afterAll(async () => {
+  await closeDatabase();
 });
 
 describe('Meals Routes', () => {
@@ -51,7 +52,7 @@ describe('Meals Routes', () => {
     const res = await agent.put(`/api/meal-plans/${id}`).send({ name: 'Premium Plan', dinner: 1 });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Premium Plan');
-    expect(res.body.dinner).toBe(1);
+    expect(res.body.dinner).toBe(true);
   });
 
   test('DELETE /api/meal-plans/:id deletes a meal plan', async () => {

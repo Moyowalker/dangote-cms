@@ -4,7 +4,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { doubleCsrf } = require('csrf-csrf');
 const path = require('path');
-const { initializeDatabase, getDb } = require('./database');
+const { initializeDatabase, Employee, MealRecord, MealPlan } = require('./database');
 
 const authRoutes = require('./routes/auth');
 const employeeRoutes = require('./routes/employees');
@@ -83,22 +83,32 @@ app.use('/api', mealRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/reports', reportRoutes);
 
-app.get('/api/dashboard/stats', requireAuth, (req, res) => {
+app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   try {
-    const db = getDb();
-    const totalEmployees = db.prepare('SELECT COUNT(*) as count FROM employees WHERE active = 1').get().count;
     const today = new Date().toISOString().split('T')[0];
-    const mealsToday = db.prepare('SELECT COUNT(*) as count FROM meal_records WHERE consumption_date = ?').get(today).count;
     const thisMonth = today.substring(0, 7);
-    const mealsThisMonth = db.prepare("SELECT COUNT(*) as count FROM meal_records WHERE strftime('%Y-%m', consumption_date) = ?").get(thisMonth).count;
-    const recentActivity = db.prepare(`
-      SELECT mr.*, e.name as employee_name, e.employee_number
-      FROM meal_records mr
-      JOIN employees e ON e.id = mr.employee_id
-      ORDER BY mr.consumed_at DESC
-      LIMIT 10
-    `).all();
-    res.json({ totalEmployees, mealsToday, mealsThisMonth, recentActivity });
+    // thisMonth is machine-generated (YYYY-MM) — escape defensively
+    const safeMonth = thisMonth.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const [totalEmployees, mealsToday, mealsThisMonth, recentRecords, activePlans] = await Promise.all([
+      Employee.countDocuments({ active: true }),
+      MealRecord.countDocuments({ consumption_date: today }),
+      MealRecord.countDocuments({ consumption_date: { $regex: `^${safeMonth}` } }),
+      MealRecord.find()
+        .populate('employee_id', 'name employee_number')
+        .sort({ consumed_at: -1 })
+        .limit(10),
+      MealPlan.countDocuments({ active: true })
+    ]);
+
+    const recentActivity = recentRecords.map((r) => ({
+      ...r.toJSON(),
+      employee_name: r.employee_id ? r.employee_id.name : null,
+      employee_number: r.employee_id ? r.employee_id.employee_number : null,
+      employee_id: r.employee_id ? r.employee_id._id.toString() : null
+    }));
+
+    res.json({ totalEmployees, mealsToday, mealsThisMonth, activePlans, recentActivity });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

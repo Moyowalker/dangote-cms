@@ -1,72 +1,96 @@
 const express = require('express');
-const { getDb } = require('../database');
+const mongoose = require('mongoose');
+const { Employee, MealRecord } = require('../database');
 const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/daily', requireAdmin, (req, res) => {
+router.get('/daily', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
     const date = req.query.date || new Date().toISOString().split('T')[0];
-    const summary = db.prepare(`
-      SELECT meal_type, COUNT(*) as count
-      FROM meal_records
-      WHERE consumption_date = ?
-      GROUP BY meal_type
-    `).all(date);
-    const details = db.prepare(`
-      SELECT mr.*, e.name as employee_name, e.department, e.employee_number
-      FROM meal_records mr
-      JOIN employees e ON e.id = mr.employee_id
-      WHERE mr.consumption_date = ?
-      ORDER BY mr.meal_type, e.name
-    `).all(date);
+
+    const summary = await MealRecord.aggregate([
+      { $match: { consumption_date: date } },
+      { $group: { _id: '$meal_type', count: { $sum: 1 } } },
+      { $project: { _id: 0, meal_type: '$_id', count: 1 } }
+    ]);
+
+    const records = await MealRecord.find({ consumption_date: date })
+      .populate('employee_id', 'name department employee_number')
+      .sort({ meal_type: 1 });
+
+    const details = records.map((r) => ({
+      ...r.toJSON(),
+      employee_name: r.employee_id ? r.employee_id.name : null,
+      department: r.employee_id ? r.employee_id.department : null,
+      employee_number: r.employee_id ? r.employee_id.employee_number : null,
+      employee_id: r.employee_id ? r.employee_id._id.toString() : null
+    }));
+
     res.json({ date, summary, details, total: details.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/department', requireAdmin, (req, res) => {
+router.get('/department', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
     const { date, month } = req.query;
-    let whereClause = '1=1';
-    const params = [];
+    const matchFilter = {};
     if (date) {
-      whereClause = 'mr.consumption_date = ?';
-      params.push(date);
+      matchFilter.consumption_date = date;
     } else if (month) {
-      whereClause = "strftime('%Y-%m', mr.consumption_date) = ?";
-      params.push(month);
+      // Escape regex special chars to prevent ReDoS / unexpected matching
+      const safeMonth = month.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      matchFilter.consumption_date = { $regex: `^${safeMonth}` };
     }
-    const data = db.prepare(`
-      SELECT e.department, mr.meal_type, COUNT(*) as count
-      FROM meal_records mr
-      JOIN employees e ON e.id = mr.employee_id
-      WHERE ${whereClause}
-      GROUP BY e.department, mr.meal_type
-      ORDER BY e.department, mr.meal_type
-    `).all(...params);
+
+    const data = await MealRecord.aggregate([
+      { $match: matchFilter },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: 'employee_id',
+          foreignField: '_id',
+          as: 'employee'
+        }
+      },
+      { $unwind: '$employee' },
+      {
+        $group: {
+          _id: { department: '$employee.department', meal_type: '$meal_type' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.department': 1, '_id.meal_type': 1 } },
+      {
+        $project: {
+          _id: 0,
+          department: '$_id.department',
+          meal_type: '$_id.meal_type',
+          count: 1
+        }
+      }
+    ]);
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/employee/:id', requireAdmin, (req, res) => {
+router.get('/employee/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    const employee = await Employee.findById(req.params.id);
     if (!employee) {
       return res.status(404).json({ error: 'Employee not found' });
     }
-    const records = db.prepare(`
-      SELECT * FROM meal_records
-      WHERE employee_id = ?
-      ORDER BY consumption_date DESC, meal_type
-    `).all(req.params.id);
-    res.json({ employee, records, total: records.length });
+    const records = await MealRecord.find({ employee_id: employee._id })
+      .sort({ consumption_date: -1, meal_type: 1 });
+    res.json({ employee: employee.toJSON(), records: records.map((r) => r.toJSON()), total: records.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

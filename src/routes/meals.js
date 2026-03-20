@@ -1,151 +1,154 @@
 const express = require('express');
-const { getDb } = require('../database');
+const mongoose = require('mongoose');
+const { MealPlan, MenuItem } = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Meal Plans
-router.get('/meal-plans', requireAuth, (req, res) => {
+// ── Meal Plans ────────────────────────────────────────────────────────────────
+
+router.get('/meal-plans', requireAuth, async (req, res) => {
   try {
-    const db = getDb();
-    const plans = db.prepare('SELECT * FROM meal_plans ORDER BY name').all();
+    const plans = await MealPlan.find().sort({ name: 1 });
     res.json(plans);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/meal-plans', requireAdmin, (req, res) => {
+router.post('/meal-plans', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
     const { name, description, breakfast, lunch, dinner } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
-    const result = db.prepare(
-      'INSERT INTO meal_plans (name, description, breakfast, lunch, dinner) VALUES (?, ?, ?, ?, ?)'
-    ).run(name, description || null, breakfast ?? 1, lunch ?? 1, dinner ?? 0);
-    const plan = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(result.lastInsertRowid);
+    const plan = await MealPlan.create({
+      name,
+      description: description || null,
+      breakfast: breakfast !== undefined ? Boolean(breakfast) : true,
+      lunch: lunch !== undefined ? Boolean(lunch) : true,
+      dinner: dinner !== undefined ? Boolean(dinner) : false
+    });
     res.status(201).json(plan);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/meal-plans/:id', requireAdmin, (req, res) => {
+router.put('/meal-plans/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(req.params.id);
-    if (!existing) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Meal plan not found' });
     }
     const { name, description, breakfast, lunch, dinner, active } = req.body;
-    db.prepare(
-      'UPDATE meal_plans SET name=?, description=?, breakfast=?, lunch=?, dinner=?, active=? WHERE id=?'
-    ).run(
-      name ?? existing.name,
-      description ?? existing.description,
-      breakfast ?? existing.breakfast,
-      lunch ?? existing.lunch,
-      dinner ?? existing.dinner,
-      active ?? existing.active,
-      req.params.id
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (breakfast !== undefined) updates.breakfast = Boolean(breakfast);
+    if (lunch !== undefined) updates.lunch = Boolean(lunch);
+    if (dinner !== undefined) updates.dinner = Boolean(dinner);
+    if (active !== undefined) updates.active = Boolean(active);
+
+    const updated = await MealPlan.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
     );
-    const updated = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(req.params.id);
+    if (!updated) {
+      return res.status(404).json({ error: 'Meal plan not found' });
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/meal-plans/:id', requireAdmin, (req, res) => {
+router.delete('/meal-plans/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM meal_plans WHERE id = ?').get(req.params.id);
-    if (!existing) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Meal plan not found' });
     }
-    db.prepare('DELETE FROM meal_plans WHERE id = ?').run(req.params.id);
+    const deleted = await MealPlan.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Meal plan not found' });
+    }
     res.json({ message: 'Meal plan deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Menu Items
-router.get('/menu-items', requireAuth, (req, res) => {
+// ── Menu Items ────────────────────────────────────────────────────────────────
+
+router.get('/menu-items', requireAuth, async (req, res) => {
   try {
-    const db = getDb();
     const { date, meal_type } = req.query;
-    let query = 'SELECT * FROM menu_items WHERE 1=1';
-    const params = [];
-    if (date) {
-      query += ' AND available_date = ?';
-      params.push(date);
-    }
-    if (meal_type) {
-      query += ' AND meal_type = ?';
-      params.push(meal_type);
-    }
-    query += ' ORDER BY available_date DESC, meal_type';
-    const items = db.prepare(query).all(...params);
+    const filter = {};
+    if (date) filter.available_date = date;
+    if (meal_type) filter.meal_type = meal_type;
+    const items = await MenuItem.find(filter).sort({ available_date: -1, meal_type: 1 });
     res.json(items);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/menu-items', requireAdmin, (req, res) => {
+router.post('/menu-items', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
     const { name, description, meal_type, price, available_date } = req.body;
     if (!name || !meal_type || !available_date) {
       return res.status(400).json({ error: 'name, meal_type, and available_date are required' });
     }
-    const result = db.prepare(
-      'INSERT INTO menu_items (name, description, meal_type, price, available_date) VALUES (?, ?, ?, ?, ?)'
-    ).run(name, description || null, meal_type, price || 0, available_date);
-    const item = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(result.lastInsertRowid);
+    const item = await MenuItem.create({
+      name,
+      description: description || null,
+      meal_type,
+      price: price || 0,
+      available_date
+    });
     res.status(201).json(item);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/menu-items/:id', requireAdmin, (req, res) => {
+router.put('/menu-items/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
-    if (!existing) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Menu item not found' });
     }
     const { name, description, meal_type, price, available_date, active } = req.body;
-    db.prepare(
-      'UPDATE menu_items SET name=?, description=?, meal_type=?, price=?, available_date=?, active=? WHERE id=?'
-    ).run(
-      name ?? existing.name,
-      description ?? existing.description,
-      meal_type ?? existing.meal_type,
-      price ?? existing.price,
-      available_date ?? existing.available_date,
-      active ?? existing.active,
-      req.params.id
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (meal_type !== undefined) updates.meal_type = meal_type;
+    if (price !== undefined) updates.price = price;
+    if (available_date !== undefined) updates.available_date = available_date;
+    if (active !== undefined) updates.active = Boolean(active);
+
+    const updated = await MenuItem.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
     );
-    const updated = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
+    if (!updated) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/menu-items/:id', requireAdmin, (req, res) => {
+router.delete('/menu-items/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(req.params.id);
-    if (!existing) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Menu item not found' });
     }
-    db.prepare('DELETE FROM menu_items WHERE id = ?').run(req.params.id);
+    const deleted = await MenuItem.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
     res.json({ message: 'Menu item deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

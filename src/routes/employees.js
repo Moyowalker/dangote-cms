@@ -1,103 +1,129 @@
 const express = require('express');
-const { getDb } = require('../database');
+const mongoose = require('mongoose');
+const { Employee } = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', requireAuth, (req, res) => {
+// Flatten a Mongoose employee document for the response, adding meal_plan_name
+function formatEmployee(doc) {
+  const obj = doc.toJSON ? doc.toJSON() : { ...doc };
+  if (doc.meal_plan_id && typeof doc.meal_plan_id === 'object' && doc.meal_plan_id.name) {
+    obj.meal_plan_name = doc.meal_plan_id.name;
+    obj.meal_plan_id = doc.meal_plan_id._id
+      ? doc.meal_plan_id._id.toString()
+      : doc.meal_plan_id.toString();
+  } else {
+    obj.meal_plan_name = null;
+  }
+  return obj;
+}
+
+router.get('/', requireAuth, async (req, res) => {
   try {
-    const db = getDb();
     const { search, department } = req.query;
-    let query = 'SELECT e.*, mp.name as meal_plan_name FROM employees e LEFT JOIN meal_plans mp ON mp.id = e.meal_plan_id WHERE 1=1';
-    const params = [];
+    const filter = {};
     if (search) {
-      query += ' AND (e.name LIKE ? OR e.employee_number LIKE ? OR e.email LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { employee_number: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
     }
     if (department) {
-      query += ' AND e.department = ?';
-      params.push(department);
+      filter.department = department;
     }
-    query += ' ORDER BY e.name';
-    const employees = db.prepare(query).all(...params);
-    res.json(employees);
+    const employees = await Employee.find(filter)
+      .populate('meal_plan_id', 'name')
+      .sort({ name: 1 });
+    res.json(employees.map(formatEmployee));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/', requireAdmin, (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
     const { employee_number, name, department, email, phone, badge_number, meal_plan_id } = req.body;
     if (!employee_number || !name || !department || !badge_number) {
       return res.status(400).json({ error: 'employee_number, name, department, and badge_number are required' });
     }
-    const result = db.prepare(
-      'INSERT INTO employees (employee_number, name, department, email, phone, badge_number, meal_plan_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(employee_number, name, department, email || null, phone || null, badge_number, meal_plan_id || null);
-    const employee = db.prepare('SELECT * FROM employees WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(employee);
+    const employee = await Employee.create({
+      employee_number,
+      name,
+      department,
+      email: email || null,
+      phone: phone || null,
+      badge_number,
+      meal_plan_id: meal_plan_id || null
+    });
+    res.status(201).json(employee.toJSON());
   } catch (err) {
-    if (err.message.includes('UNIQUE')) {
+    if (err.code === 11000) {
       return res.status(409).json({ error: 'Employee number, email, or badge number already exists' });
     }
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   try {
-    const db = getDb();
-    const employee = db.prepare('SELECT e.*, mp.name as meal_plan_name FROM employees e LEFT JOIN meal_plans mp ON mp.id = e.meal_plan_id WHERE e.id = ?').get(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    const employee = await Employee.findById(req.params.id).populate('meal_plan_id', 'name');
     if (!employee) {
       return res.status(404).json({ error: 'Employee not found' });
     }
-    res.json(employee);
+    res.json(formatEmployee(employee));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/:id', requireAdmin, (req, res) => {
+router.put('/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const { employee_number, name, department, email, phone, badge_number, meal_plan_id, active } = req.body;
-    const existing = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id);
-    if (!existing) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Employee not found' });
     }
-    db.prepare(
-      'UPDATE employees SET employee_number=?, name=?, department=?, email=?, phone=?, badge_number=?, meal_plan_id=?, active=? WHERE id=?'
-    ).run(
-      employee_number ?? existing.employee_number,
-      name ?? existing.name,
-      department ?? existing.department,
-      email ?? existing.email,
-      phone ?? existing.phone,
-      badge_number ?? existing.badge_number,
-      meal_plan_id ?? existing.meal_plan_id,
-      active ?? existing.active,
-      req.params.id
-    );
-    const updated = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    const { employee_number, name, department, email, phone, badge_number, meal_plan_id, active } = req.body;
+    const updates = {};
+    if (employee_number !== undefined) updates.employee_number = employee_number;
+    if (name !== undefined) updates.name = name;
+    if (department !== undefined) updates.department = department;
+    if (email !== undefined) updates.email = email;
+    if (phone !== undefined) updates.phone = phone;
+    if (badge_number !== undefined) updates.badge_number = badge_number;
+    if (meal_plan_id !== undefined) updates.meal_plan_id = meal_plan_id;
+    if (active !== undefined) updates.active = active;
+
+    const updated = await Employee.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).populate('meal_plan_id', 'name');
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    res.json(formatEmployee(updated));
   } catch (err) {
-    if (err.message.includes('UNIQUE')) {
+    if (err.code === 11000) {
       return res.status(409).json({ error: 'Employee number, email, or badge number already exists' });
     }
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/:id', requireAdmin, (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id);
-    if (!existing) {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Employee not found' });
     }
-    db.prepare('DELETE FROM employees WHERE id = ?').run(req.params.id);
+    const deleted = await Employee.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
     res.json({ message: 'Employee deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

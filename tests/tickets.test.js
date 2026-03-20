@@ -1,30 +1,33 @@
 process.env.NODE_ENV = 'test';
 
+jest.mock('../src/database');
+
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, getDb } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord } = require('../src/database');
 
 let agent;
 let testEmployee;
 
-beforeAll(() => {
-  initializeDatabase();
+beforeAll(async () => {
+  await initializeDatabase();
   agent = request.agent(app);
 });
 
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
-  const db = getDb();
-  db.prepare('DELETE FROM meal_records').run();
-  db.prepare('DELETE FROM employees').run();
-  const result = db.prepare(
-    'INSERT INTO employees (employee_number, name, department, badge_number) VALUES (?, ?, ?, ?)'
-  ).run('EMP001', 'Test Employee', 'Engineering', 'BADGE001');
-  testEmployee = db.prepare('SELECT * FROM employees WHERE id = ?').get(result.lastInsertRowid);
+  await MealRecord.deleteMany({});
+  await Employee.deleteMany({});
+  testEmployee = await Employee.create({
+    employee_number: 'EMP001',
+    name: 'Test Employee',
+    department: 'Engineering',
+    badge_number: 'BADGE001'
+  });
 });
 
-afterAll(() => {
-  closeDatabase();
+afterAll(async () => {
+  await closeDatabase();
 });
 
 describe('Tickets Routes', () => {

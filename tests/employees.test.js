@@ -1,25 +1,26 @@
 process.env.NODE_ENV = 'test';
 
+jest.mock('../src/database');
+
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, getDb } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord } = require('../src/database');
 
 let agent;
 
-beforeAll(() => {
-  initializeDatabase();
+beforeAll(async () => {
+  await initializeDatabase();
   agent = request.agent(app);
 });
 
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
-  const db = getDb();
-  db.prepare('DELETE FROM meal_records').run();
-  db.prepare('DELETE FROM employees').run();
+  await MealRecord.deleteMany({});
+  await Employee.deleteMany({});
 });
 
-afterAll(() => {
-  closeDatabase();
+afterAll(async () => {
+  await closeDatabase();
 });
 
 describe('Employees Routes', () => {

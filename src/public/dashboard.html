@@ -72,15 +72,10 @@
       document.getElementById('total-employees').textContent = data.totalEmployees;
       document.getElementById('meals-today').textContent = data.mealsToday;
       document.getElementById('meals-month').textContent = data.mealsThisMonth;
-
-      const plansRes = await apiFetch('/meal-plans');
-      if (plansRes && plansRes.ok) {
-        const plans = await plansRes.json();
-        document.getElementById('active-plans').textContent = plans.filter(p => p.active).length;
-      }
+      document.getElementById('active-plans').textContent = data.activePlans ?? 0;
 
       const tbody = document.getElementById('activity-table');
-      if (data.recentActivity.length === 0) {
+      if (!data.recentActivity || data.recentActivity.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #666;">No activity yet</td></tr>';
         return;
       }

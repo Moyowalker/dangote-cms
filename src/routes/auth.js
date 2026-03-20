@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const { getDb } = require('../database');
+const { User } = require('../database');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -11,8 +11,7 @@ router.post('/login', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
     }
-    const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
