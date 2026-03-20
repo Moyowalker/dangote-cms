@@ -24,6 +24,14 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again later.' }
 });
 
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dangote-cms-secret-2024',
   resave: false,
@@ -37,6 +45,7 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api/auth/login', loginLimiter);
+app.use('/api', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api', mealRoutes);
