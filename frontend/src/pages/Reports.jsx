@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
 
 export default function Reports() {
@@ -11,7 +11,7 @@ export default function Reports() {
     client.get('/reports/summary').then(res => setSummary(res.data)).catch(() => {});
   }, []);
 
-  async function fetchDaily() {
+  const fetchDaily = useCallback(async () => {
     setLoading(true);
     try {
       const res = await client.get(`/reports/daily?date=${dailyDate}`);
@@ -21,9 +21,9 @@ export default function Reports() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [dailyDate]);
 
-  useEffect(() => { fetchDaily(); }, [dailyDate]);
+  useEffect(() => { fetchDaily(); }, [fetchDaily]);
 
   function getMealCount(mealType, status) {
     if (!dailyData?.counts) return 0;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
 
 export default function Workers() {
@@ -11,7 +11,7 @@ export default function Workers() {
   const [filterDept, setFilterDept] = useState('');
   const [filterActive, setFilterActive] = useState('true');
 
-  async function fetchWorkers() {
+  const fetchWorkers = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
@@ -24,9 +24,9 @@ export default function Workers() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterDept, filterActive]);
 
-  useEffect(() => { fetchWorkers(); }, [filterDept, filterActive]);
+  useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
 
   function openAddModal() {
     setEditingWorker(null);

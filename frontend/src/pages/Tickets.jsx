@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
 
 export default function Tickets() {
@@ -9,7 +9,7 @@ export default function Tickets() {
   const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState('');
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [ticketsRes, workersRes] = await Promise.all([
@@ -18,17 +18,15 @@ export default function Tickets() {
       ]);
       setTickets(ticketsRes.data);
       setWorkers(workersRes.data);
-      if (workersRes.data.length > 0 && !form.worker_id) {
-        setForm(f => ({ ...f, worker_id: workersRes.data[0].id }));
-      }
+      setForm(f => ({ ...f, worker_id: f.worker_id || (workersRes.data[0]?.id ?? '') }));
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   async function handleIssue(e) {
     e.preventDefault();

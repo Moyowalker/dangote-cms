@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
 
 export default function VendorInterface() {
@@ -7,16 +7,16 @@ export default function VendorInterface() {
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState([]);
 
-  async function fetchTransactions() {
+  const fetchTransactions = useCallback(async () => {
     try {
       const res = await client.get('/vendors/transactions');
       setTransactions(res.data);
     } catch (err) {
       console.error(err);
     }
-  }
+  }, []);
 
-  useEffect(() => { fetchTransactions(); }, []);
+  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
   async function handleRedeem(e) {
     e.preventDefault();
