@@ -38,7 +38,8 @@ router.get('/', requireAuth, async (req, res) => {
       .sort({ name: 1 });
     res.json(employees.map(formatEmployee));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -62,7 +63,8 @@ router.post('/', requireAdmin, async (req, res) => {
     if (err.code === 11000) {
       return res.status(409).json({ error: 'Employee number, email, or badge number already exists' });
     }
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -77,7 +79,8 @@ router.get('/:id', requireAuth, async (req, res) => {
     }
     res.json(formatEmployee(employee));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -111,7 +114,8 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (err.code === 11000) {
       return res.status(409).json({ error: 'Employee number, email, or badge number already exists' });
     }
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -126,7 +130,8 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     }
     res.json({ message: 'Employee deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

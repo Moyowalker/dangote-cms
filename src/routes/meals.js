@@ -12,7 +12,8 @@ router.get('/meal-plans', requireAuth, async (req, res) => {
     const plans = await MealPlan.find().sort({ name: 1 });
     res.json(plans);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -31,7 +32,8 @@ router.post('/meal-plans', requireAdmin, async (req, res) => {
     });
     res.status(201).json(plan);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -59,7 +61,8 @@ router.put('/meal-plans/:id', requireAdmin, async (req, res) => {
     }
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -74,7 +77,8 @@ router.delete('/meal-plans/:id', requireAdmin, async (req, res) => {
     }
     res.json({ message: 'Meal plan deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -89,7 +93,8 @@ router.get('/menu-items', requireAuth, async (req, res) => {
     const items = await MenuItem.find(filter).sort({ available_date: -1, meal_type: 1 });
     res.json(items);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -108,7 +113,8 @@ router.post('/menu-items', requireAdmin, async (req, res) => {
     });
     res.status(201).json(item);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -136,7 +142,8 @@ router.put('/menu-items/:id', requireAdmin, async (req, res) => {
     }
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -151,7 +158,8 @@ router.delete('/menu-items/:id', requireAdmin, async (req, res) => {
     }
     res.json({ message: 'Menu item deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

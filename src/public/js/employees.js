@@ -10,24 +10,62 @@ async function loadEmployees(search = '') {
 
 function renderEmployees(employees) {
   const tbody = document.getElementById('employees-table');
+  tbody.textContent = '';
   if (employees.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px; color: #666;">No employees found</td></tr>';
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.style.cssText = 'text-align:center; padding: 20px; color: #666;';
+    td.textContent = 'No employees found';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
     return;
   }
-  tbody.innerHTML = employees.map(e => `
-    <tr>
-      <td>${e.name}</td>
-      <td>${e.employee_number}</td>
-      <td>${e.department}</td>
-      <td>${e.email || '-'}</td>
-      <td>${e.badge_number}</td>
-      <td><span class="badge ${e.active ? 'badge-success' : 'badge-danger'}">${e.active ? 'Active' : 'Inactive'}</span></td>
-      <td>
-        <button class="btn btn-primary btn-sm" onclick="openEditModal(${JSON.stringify(e).replace(/"/g, '&quot;')})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteEmployee(${e.id})">Delete</button>
-      </td>
-    </tr>
-  `).join('');
+  employees.forEach(e => {
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    nameTd.textContent = e.name;
+    tr.appendChild(nameTd);
+
+    const empNumTd = document.createElement('td');
+    empNumTd.textContent = e.employee_number;
+    tr.appendChild(empNumTd);
+
+    const deptTd = document.createElement('td');
+    deptTd.textContent = e.department;
+    tr.appendChild(deptTd);
+
+    const emailTd = document.createElement('td');
+    emailTd.textContent = e.email || '-';
+    tr.appendChild(emailTd);
+
+    const badgeTd = document.createElement('td');
+    badgeTd.textContent = e.badge_number;
+    tr.appendChild(badgeTd);
+
+    const statusTd = document.createElement('td');
+    const statusSpan = document.createElement('span');
+    statusSpan.className = `badge ${e.active ? 'badge-success' : 'badge-danger'}`;
+    statusSpan.textContent = e.active ? 'Active' : 'Inactive';
+    statusTd.appendChild(statusSpan);
+    tr.appendChild(statusTd);
+
+    const actionsTd = document.createElement('td');
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-primary btn-sm';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openEditModal(e));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn btn-danger btn-sm';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => deleteEmployee(e.id));
+    actionsTd.appendChild(editBtn);
+    actionsTd.appendChild(deleteBtn);
+    tr.appendChild(actionsTd);
+
+    tbody.appendChild(tr);
+  });
 }
 
 async function loadMealPlansForSelect() {

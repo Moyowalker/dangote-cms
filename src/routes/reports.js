@@ -29,7 +29,8 @@ router.get('/daily', requireAdmin, async (req, res) => {
 
     res.json({ date, summary, details, total: details.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -75,7 +76,8 @@ router.get('/department', requireAdmin, async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -92,7 +94,8 @@ router.get('/employee/:id', requireAdmin, async (req, res) => {
       .sort({ consumption_date: -1, meal_type: 1 });
     res.json({ employee: employee.toJSON(), records: records.map((r) => r.toJSON()), total: records.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

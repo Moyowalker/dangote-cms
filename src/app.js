@@ -1,10 +1,20 @@
 const express = require('express');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { doubleCsrf } = require('csrf-csrf');
 const path = require('path');
 const { initializeDatabase, Employee, MealRecord, MealPlan } = require('./database');
+
+const isTest = process.env.NODE_ENV === 'test';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Fail fast in production when SESSION_SECRET is not explicitly configured
+if (isProduction && !process.env.SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET environment variable is required in production');
+  process.exit(1);
+}
 
 const authRoutes = require('./routes/auth');
 const employeeRoutes = require('./routes/employees');
@@ -19,40 +29,61 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many login attempts, please try again later.' }
-});
+// Disable rate limiting in tests to prevent flaky test suites
+const noop = (req, res, next) => next();
 
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
-});
+const loginLimiter = isTest
+  ? noop
+  : rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many login attempts, please try again later.' }
+    });
+
+const apiLimiter = isTest
+  ? noop
+  : rateLimit({
+      windowMs: 60 * 1000,
+      max: 300,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests, please try again later.' }
+    });
+
+// Trust the first hop from a reverse proxy (needed for secure cookies behind TLS termination)
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dangote-cms-secret-2024',
+  secret: process.env.SESSION_SECRET || 'dangote-cms-secret-dev',
   resave: false,
   saveUninitialized: false,
+  // Use MongoDB-backed session store in non-test environments
+  store: isTest
+    ? undefined
+    : MongoStore.create({
+        mongoUrl: process.env.MONGO_URI || 'mongodb://localhost:27017/dangote-cms',
+        ttl: 24 * 60 * 60
+      }),
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     sameSite: 'strict'
   }
 }));
 
 const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
-  getSecret: () => process.env.SESSION_SECRET || 'dangote-cms-secret-2024',
+  getSecret: () => process.env.SESSION_SECRET || 'dangote-cms-secret-dev',
   getSessionIdentifier: (req) => req.sessionID || req.ip || 'anonymous',
   cookieName: 'csrf-token',
   cookieOptions: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     sameSite: 'strict',
-    httpOnly: false
+    // httpOnly: true — token is read server-side from the cookie,
+    // not by client JS, so httpOnly is safe here
+    httpOnly: true
   },
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
   getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token']
@@ -110,11 +141,9 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
 
     res.json({ totalEmployees, mealsToday, mealsThisMonth, activePlans, recentActivity });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Dashboard stats error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
-});
-
-app.get('/', (req, res) => {
   res.redirect('/index.html');
 });
 

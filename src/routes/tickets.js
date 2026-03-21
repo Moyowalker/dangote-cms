@@ -1,10 +1,12 @@
 const express = require('express');
 const { Employee, MealRecord } = require('../database');
-const { requireAuth } = require('../middleware/auth');
+const { requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/validate/:badge_number', requireAuth, async (req, res) => {
+const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
+
+router.get('/validate/:badge_number', requireStaff, async (req, res) => {
   try {
     const { badge_number } = req.params;
     const { meal_type, date } = req.query;
@@ -16,6 +18,10 @@ router.get('/validate/:badge_number', requireAuth, async (req, res) => {
 
     const checkDate = date || new Date().toISOString().split('T')[0];
     const checkMealType = meal_type || 'lunch';
+
+    if (!VALID_MEAL_TYPES.includes(checkMealType)) {
+      return res.status(400).json({ error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` });
+    }
 
     const existing = await MealRecord.findOne({
       employee_id: employee._id,
@@ -31,16 +37,21 @@ router.get('/validate/:badge_number', requireAuth, async (req, res) => {
       date: checkDate
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Ticket validate error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.post('/consume', requireAuth, async (req, res) => {
+router.post('/consume', requireStaff, async (req, res) => {
   try {
     const { badge_number, meal_type, canteen_location, notes } = req.body;
 
     if (!badge_number || !meal_type) {
       return res.status(400).json({ error: 'badge_number and meal_type are required' });
+    }
+
+    if (!VALID_MEAL_TYPES.includes(meal_type)) {
+      return res.status(400).json({ error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` });
     }
 
     const employee = await Employee.findOne({ badge_number, active: true });
@@ -67,17 +78,23 @@ router.post('/consume', requireAuth, async (req, res) => {
       throw insertErr;
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Ticket consume error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.get('/history', requireAuth, async (req, res) => {
+router.get('/history', requireStaff, async (req, res) => {
   try {
     const { employee_id, date, meal_type } = req.query;
     const filter = {};
     if (employee_id) filter.employee_id = employee_id;
     if (date) filter.consumption_date = date;
-    if (meal_type) filter.meal_type = meal_type;
+    if (meal_type) {
+      if (!VALID_MEAL_TYPES.includes(meal_type)) {
+        return res.status(400).json({ error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` });
+      }
+      filter.meal_type = meal_type;
+    }
 
     const records = await MealRecord.find(filter)
       .populate('employee_id', 'name employee_number badge_number')
@@ -95,7 +112,8 @@ router.get('/history', requireAuth, async (req, res) => {
     });
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Ticket history error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
