@@ -15,6 +15,21 @@ afterAll(async () => {
 });
 
 describe('Auth Routes', () => {
+  test('GET /api/health returns service health payload', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.service).toBe('dangote-cms-backend');
+  });
+
+  test('GET /api/readiness returns ready when database is connected', async () => {
+    const res = await request(app).get('/api/readiness');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ready');
+    expect(res.body.checks).toBeDefined();
+    expect(res.body.checks.database).toBe('up');
+  });
+
   test('POST /api/auth/login with valid credentials returns 200', async () => {
     const res = await request(app)
       .post('/api/auth/login')

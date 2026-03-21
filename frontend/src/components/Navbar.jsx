@@ -18,14 +18,16 @@ export default function Navbar() {
       <div className="navbar-brand">🍽️ Dangote CMS</div>
       <ul className="navbar-nav">
         <li><NavLink to="/dashboard">Dashboard</NavLink></li>
-        {(user.role === 'admin' || user.role === 'hr') && (
+        {user.role === 'admin' && (
           <>
             <li><NavLink to="/workers">Workers</NavLink></li>
-            <li><NavLink to="/tickets">Tickets</NavLink></li>
             <li><NavLink to="/reports">Reports</NavLink></li>
           </>
         )}
-        {user.role === 'vendor' && (
+        {(user.role === 'admin' || user.role === 'staff') && (
+          <li><NavLink to="/tickets">Tickets</NavLink></li>
+        )}
+        {(user.role === 'admin' || user.role === 'staff') && (
           <li><NavLink to="/vendor">Vendor</NavLink></li>
         )}
       </ul>

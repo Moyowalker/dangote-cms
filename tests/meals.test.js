@@ -73,6 +73,20 @@ describe('Meals Routes', () => {
     expect(res.body.name).toBe('Rice and Beans');
   });
 
+  test('POST /api/menu-items rejects invalid meal_type with consistent error envelope', async () => {
+    const res = await agent.post('/api/menu-items').send({
+      name: 'Invalid Meal',
+      meal_type: 'snack',
+      price: 200,
+      available_date: '2024-01-15'
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(typeof res.body.error).toBe('string');
+  });
+
   test('GET /api/menu-items returns items', async () => {
     await agent.post('/api/menu-items').send({
       name: 'Jollof Rice',

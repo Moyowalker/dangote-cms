@@ -48,9 +48,13 @@ function matchFilter(doc, filter) {
   for (const [k, v] of Object.entries(filter)) {
     if (k === '$or') {
       if (!v.some((f) => matchFilter(doc, f))) return false;
+    } else if (k === '$expr') {
+      continue;
     } else if (v !== null && typeof v === 'object' && !Array.isArray(v) && v.$regex !== undefined) {
       const re = new RegExp(v.$regex, v.$options || '');
       if (!re.test(String(doc[k] ?? ''))) return false;
+    } else if (v !== null && typeof v === 'object' && !Array.isArray(v) && v.$gt !== undefined) {
+      if (!(Number(doc[k] ?? 0) > Number(v.$gt))) return false;
     } else if (v === null) {
       if (doc[k] != null) return false;
     } else if (typeof v === 'boolean') {
@@ -121,6 +125,48 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
       return new QueryMock(opts.new !== false ? updated : existing);
     },
 
+    findOneAndUpdate(filter, update, opts = {}) {
+      let existing = [...store.values()].find((d) => matchFilter(d, filter)) || null;
+
+      if (!existing && opts.upsert) {
+        const insertData = {
+          ...defaults,
+          ...Object.fromEntries(Object.entries(filter).filter(([k, v]) => !k.startsWith('$') && typeof v !== 'object')),
+          ...(update.$setOnInsert || {})
+        };
+        checkUnique(insertData);
+        existing = makeDoc({ ...insertData, created_at: new Date().toISOString() });
+        store.set(existing.id, existing);
+      }
+
+      if (!existing) {
+        return Promise.resolve(null);
+      }
+
+      if (filter.$expr && filter.$expr.$lt) {
+        const [left, right] = filter.$expr.$lt;
+        const leftKey = String(left).replace('$', '');
+        const rightKey = String(right).replace('$', '');
+        if (!((existing[leftKey] || 0) < (existing[rightKey] || 0))) {
+          return Promise.resolve(null);
+        }
+      }
+
+      const next = { ...existing };
+      if (update.$set) {
+        Object.assign(next, update.$set);
+      }
+      if (update.$inc) {
+        for (const [k, v] of Object.entries(update.$inc)) {
+          next[k] = Number(next[k] || 0) + Number(v);
+        }
+      }
+      checkUnique(next, existing.id);
+      const updated = makeDoc(next);
+      store.set(updated.id, updated);
+      return Promise.resolve(opts.new === false ? existing : updated);
+    },
+
     async findByIdAndDelete(id) {
       const doc = store.get(String(id));
       if (doc) store.delete(String(id));
@@ -155,12 +201,20 @@ const employeeStore   = new Map();
 const mealPlanStore   = new Map();
 const menuItemStore   = new Map();
 const mealRecordStore = new Map();
+const workerCategoryStore = new Map();
+const entitlementPolicyStore = new Map();
+const workerEntitlementBalanceStore = new Map();
+const auditLogStore = new Map();
 
 const User     = createModel(userStore,     ['username']);
-const Employee = createModel(employeeStore, ['employee_number', 'email', 'badge_number'], { active: true });
+const Employee = createModel(employeeStore, ['employee_number', 'email', 'badge_number'], { active: true, status: 'active' });
 const MealPlan = createModel(mealPlanStore);
 const MenuItem = createModel(menuItemStore);
 const MealRecord = createModel(mealRecordStore);
+const WorkerCategory = createModel(workerCategoryStore, ['code']);
+const EntitlementPolicy = createModel(entitlementPolicyStore);
+const WorkerEntitlementBalance = createModel(workerEntitlementBalanceStore);
+const AuditLog = createModel(auditLogStore);
 
 // Enforce compound unique constraint: (employee_id, meal_type, consumption_date)
 const _origMealRecordCreate = MealRecord.create.bind(MealRecord);
@@ -191,4 +245,16 @@ async function initializeDatabase() {
 
 async function closeDatabase() { /* no-op for mock */ }
 
-module.exports = { initializeDatabase, closeDatabase, User, Employee, MealPlan, MenuItem, MealRecord };
+module.exports = {
+  initializeDatabase,
+  closeDatabase,
+  User,
+  Employee,
+  MealPlan,
+  WorkerCategory,
+  EntitlementPolicy,
+  WorkerEntitlementBalance,
+  MenuItem,
+  MealRecord,
+  AuditLog
+};

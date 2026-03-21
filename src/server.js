@@ -2,7 +2,7 @@ const app = require('./app');
 const { initializeDatabase } = require('./database');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/dangote-cms';
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 initializeDatabase(MONGO_URI)
   .then(() => {

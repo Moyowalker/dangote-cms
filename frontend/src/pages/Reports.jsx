@@ -2,20 +2,20 @@ import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
 
 export default function Reports() {
-  const [summary, setSummary] = useState(null);
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().split('T')[0]);
   const [dailyData, setDailyData] = useState(null);
+  const [departmentData, setDepartmentData] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    client.get('/reports/summary').then(res => setSummary(res.data)).catch(() => {});
-  }, []);
 
   const fetchDaily = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await client.get(`/reports/daily?date=${dailyDate}`);
-      setDailyData(res.data);
+      const [dailyRes, deptRes] = await Promise.all([
+        client.get(`/reports/daily?date=${dailyDate}`),
+        client.get('/reports/department', { params: { date: dailyDate } })
+      ]);
+      setDailyData(dailyRes.data);
+      setDepartmentData(deptRes.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -25,9 +25,9 @@ export default function Reports() {
 
   useEffect(() => { fetchDaily(); }, [fetchDaily]);
 
-  function getMealCount(mealType, status) {
-    if (!dailyData?.counts) return 0;
-    const entry = dailyData.counts.find(c => c.meal_type === mealType && c.status === status);
+  function getMealCount(mealType) {
+    if (!dailyData?.summary) return 0;
+    const entry = dailyData.summary.find(c => c.meal_type === mealType);
     return entry?.count || 0;
   }
 
@@ -35,23 +35,23 @@ export default function Reports() {
     <div className="page-container">
       <h1 className="page-title">Reports</h1>
 
-      {summary && (
+      {dailyData && (
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-value">{summary.total_workers}</div>
-            <div className="stat-label">Active Workers</div>
+            <div className="stat-value">{dailyData.total || 0}</div>
+            <div className="stat-label">Total Meals</div>
           </div>
           <div className="stat-card" style={{ borderLeftColor: '#007bff' }}>
-            <div className="stat-value" style={{ color: '#007bff' }}>{summary.tickets_issued_today}</div>
-            <div className="stat-label">Issued Today</div>
+            <div className="stat-value" style={{ color: '#007bff' }}>{getMealCount('breakfast')}</div>
+            <div className="stat-label">Breakfast</div>
           </div>
           <div className="stat-card" style={{ borderLeftColor: '#28a745' }}>
-            <div className="stat-value" style={{ color: '#28a745' }}>{summary.tickets_redeemed_today}</div>
-            <div className="stat-label">Redeemed Today</div>
+            <div className="stat-value" style={{ color: '#28a745' }}>{getMealCount('lunch')}</div>
+            <div className="stat-label">Lunch</div>
           </div>
           <div className="stat-card" style={{ borderLeftColor: '#ffc107' }}>
-            <div className="stat-value" style={{ color: '#ffc107' }}>{summary.tickets_pending_today}</div>
-            <div className="stat-label">Pending Today</div>
+            <div className="stat-value" style={{ color: '#ffc107' }}>{getMealCount('dinner')}</div>
+            <div className="stat-label">Dinner</div>
           </div>
         </div>
       )}
@@ -76,22 +76,15 @@ export default function Reports() {
               <thead>
                 <tr>
                   <th>Meal Type</th>
-                  <th>Issued</th>
-                  <th>Redeemed</th>
-                  <th>Pending</th>
-                  <th>Expired</th>
+                  <th>Count</th>
                 </tr>
               </thead>
               <tbody>
                 {['breakfast', 'lunch', 'dinner'].map(meal => {
-                  const issued = getMealCount(meal, 'pending') + getMealCount(meal, 'used') + getMealCount(meal, 'expired');
                   return (
                     <tr key={meal}>
                       <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{meal}</span></td>
-                      <td>{issued}</td>
-                      <td><span className="badge badge-success">{getMealCount(meal, 'used')}</span></td>
-                      <td><span className="badge badge-warning">{getMealCount(meal, 'pending')}</span></td>
-                      <td><span className="badge badge-danger">{getMealCount(meal, 'expired')}</span></td>
+                      <td>{getMealCount(meal)}</td>
                     </tr>
                   );
                 })}
@@ -99,6 +92,32 @@ export default function Reports() {
             </table>
           </div>
         ) : null}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Department Breakdown</div>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Department</th>
+                <th>Meal Type</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {departmentData.length === 0 ? (
+                <tr><td colSpan={3} className="text-center text-muted" style={{ padding: '20px' }}>No department data</td></tr>
+              ) : departmentData.map((d, idx) => (
+                <tr key={`${d.department}-${d.meal_type}-${idx}`}>
+                  <td>{d.department}</td>
+                  <td style={{ textTransform: 'capitalize' }}>{d.meal_type}</td>
+                  <td>{d.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

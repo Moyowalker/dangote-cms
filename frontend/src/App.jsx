@@ -23,22 +23,22 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/workers" element={
-          <ProtectedRoute roles={['admin', 'hr']}>
+          <ProtectedRoute roles={['admin']}>
             <Workers />
           </ProtectedRoute>
         } />
         <Route path="/tickets" element={
-          <ProtectedRoute roles={['admin', 'hr']}>
+          <ProtectedRoute roles={['admin', 'staff']}>
             <Tickets />
           </ProtectedRoute>
         } />
         <Route path="/vendor" element={
-          <ProtectedRoute roles={['vendor', 'admin']}>
+          <ProtectedRoute roles={['staff', 'admin']}>
             <VendorInterface />
           </ProtectedRoute>
         } />
         <Route path="/reports" element={
-          <ProtectedRoute roles={['admin', 'hr']}>
+          <ProtectedRoute roles={['admin']}>
             <Reports />
           </ProtectedRoute>
         } />

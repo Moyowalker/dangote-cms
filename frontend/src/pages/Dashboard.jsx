@@ -9,8 +9,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user?.role === 'admin' || user?.role === 'hr') {
-      client.get('/reports/summary')
+    if (user?.role === 'admin') {
+      client.get('/dashboard/stats')
         .then(res => setSummary(res.data))
         .catch(() => {})
         .finally(() => setLoading(false));
@@ -26,27 +26,27 @@ export default function Dashboard() {
         <span className="text-muted">Welcome, <strong>{user?.username}</strong></span>
       </div>
 
-      {(user?.role === 'admin' || user?.role === 'hr') && (
+      {user?.role === 'admin' && (
         <>
           {loading ? (
             <div className="loading">Loading stats...</div>
           ) : summary ? (
             <div className="stats-grid">
               <div className="stat-card">
-                <div className="stat-value">{summary.total_workers}</div>
+                <div className="stat-value">{summary.totalEmployees}</div>
                 <div className="stat-label">Active Workers</div>
               </div>
               <div className="stat-card" style={{ borderLeftColor: '#007bff' }}>
-                <div className="stat-value" style={{ color: '#007bff' }}>{summary.tickets_issued_today}</div>
-                <div className="stat-label">Tickets Issued Today</div>
+                <div className="stat-value" style={{ color: '#007bff' }}>{summary.mealsToday}</div>
+                <div className="stat-label">Meals Today</div>
               </div>
               <div className="stat-card" style={{ borderLeftColor: '#28a745' }}>
-                <div className="stat-value" style={{ color: '#28a745' }}>{summary.tickets_redeemed_today}</div>
-                <div className="stat-label">Redeemed Today</div>
+                <div className="stat-value" style={{ color: '#28a745' }}>{summary.mealsThisMonth}</div>
+                <div className="stat-label">Meals This Month</div>
               </div>
               <div className="stat-card" style={{ borderLeftColor: '#ffc107' }}>
-                <div className="stat-value" style={{ color: '#ffc107' }}>{summary.tickets_pending_today}</div>
-                <div className="stat-label">Pending Today</div>
+                <div className="stat-value" style={{ color: '#ffc107' }}>{summary.activePlans}</div>
+                <div className="stat-label">Active Meal Plans</div>
               </div>
             </div>
           ) : null}
@@ -62,10 +62,10 @@ export default function Dashboard() {
         </>
       )}
 
-      {user?.role === 'vendor' && (
+      {user?.role === 'staff' && (
         <div className="card">
-          <div className="card-title">Vendor Actions</div>
-          <p className="mb-3">Use the Vendor Interface to redeem meal tickets.</p>
+          <div className="card-title">Staff Actions</div>
+          <p className="mb-3">Use ticket and vendor tools to validate and record meal consumption.</p>
           <Link to="/vendor" className="btn btn-primary">🍽️ Go to Vendor Interface</Link>
         </div>
       )}

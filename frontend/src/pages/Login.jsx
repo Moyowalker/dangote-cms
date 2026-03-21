@@ -16,7 +16,7 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(username, password);
-      if (user.role === 'vendor') {
+      if (user.role === 'staff') {
         navigate('/vendor');
       } else {
         navigate('/dashboard');
@@ -69,7 +69,7 @@ export default function Login() {
           </button>
         </form>
         <p className="text-muted text-center mt-3" style={{ fontSize: '0.75rem' }}>
-          Default: admin / Admin@123
+          Default: admin / admin123
         </p>
       </div>
     </div>

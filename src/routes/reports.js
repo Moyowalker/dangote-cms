@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { Employee, MealRecord } = require('../database');
 const { requireAdmin } = require('../middleware/auth');
+const { sendError } = require('../utils/apiResponse');
+const { getPagination, paginateArray } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -21,16 +23,30 @@ router.get('/daily', requireAdmin, async (req, res) => {
 
     const details = records.map((r) => ({
       ...r.toJSON(),
-      employee_name: r.employee_id ? r.employee_id.name : null,
-      department: r.employee_id ? r.employee_id.department : null,
-      employee_number: r.employee_id ? r.employee_id.employee_number : null,
-      employee_id: r.employee_id ? r.employee_id._id.toString() : null
+      employee_name: r.employee_id && typeof r.employee_id === 'object' ? r.employee_id.name : null,
+      department: r.employee_id && typeof r.employee_id === 'object' ? r.employee_id.department : null,
+      employee_number: r.employee_id && typeof r.employee_id === 'object' ? r.employee_id.employee_number : null,
+      employee_id: r.employee_id && typeof r.employee_id === 'object'
+        ? (r.employee_id._id ? r.employee_id._id.toString() : r.employee_id.id)
+        : String(r.employee_id || '') || null
     }));
 
-    res.json({ date, summary, details, total: details.length });
+    const { hasPagination, page, limit } = getPagination(req.query);
+    if (!hasPagination) {
+      return res.json({ date, summary, details, total: details.length });
+    }
+
+    const paginated = paginateArray(details, page, limit);
+    return res.json({
+      date,
+      summary,
+      details: paginated.data,
+      total: details.length,
+      pagination: paginated.pagination
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
@@ -74,28 +90,46 @@ router.get('/department', requireAdmin, async (req, res) => {
       }
     ]);
 
-    res.json(data);
+    const { hasPagination, page, limit } = getPagination(req.query);
+    if (!hasPagination) {
+      return res.json(data);
+    }
+
+    return res.json(paginateArray(data, page, limit));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.get('/employee/:id', requireAdmin, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return sendError(res, 404, 'Employee not found', 'NOT_FOUND');
     }
     const employee = await Employee.findById(req.params.id);
     if (!employee) {
-      return res.status(404).json({ error: 'Employee not found' });
+      return sendError(res, 404, 'Employee not found', 'NOT_FOUND');
     }
     const records = await MealRecord.find({ employee_id: employee._id })
       .sort({ consumption_date: -1, meal_type: 1 });
-    res.json({ employee: employee.toJSON(), records: records.map((r) => r.toJSON()), total: records.length });
+
+    const serialized = records.map((r) => r.toJSON());
+    const { hasPagination, page, limit } = getPagination(req.query);
+    if (!hasPagination) {
+      return res.json({ employee: employee.toJSON(), records: serialized, total: records.length });
+    }
+
+    const paginated = paginateArray(serialized, page, limit);
+    return res.json({
+      employee: employee.toJSON(),
+      records: paginated.data,
+      total: records.length,
+      pagination: paginated.pagination
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 

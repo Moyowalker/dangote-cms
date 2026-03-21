@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { doubleCsrf } = require('csrf-csrf');
 const path = require('path');
+const mongoose = require('mongoose');
 const { initializeDatabase, Employee, MealRecord, MealPlan } = require('./database');
 
 const isTest = process.env.NODE_ENV === 'test';
@@ -19,8 +20,10 @@ if (isProduction && !process.env.SESSION_SECRET) {
 const authRoutes = require('./routes/auth');
 const employeeRoutes = require('./routes/employees');
 const mealRoutes = require('./routes/meals');
+const entitlementRoutes = require('./routes/entitlements');
 const ticketRoutes = require('./routes/tickets');
 const reportRoutes = require('./routes/reports');
+const reconciliationRoutes = require('./routes/reconciliation');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -99,6 +102,39 @@ app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken: generateCsrfToken(req, res) });
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', service: 'dangote-cms-backend' });
+});
+
+app.get('/api/readiness', (req, res) => {
+  if (isTest) {
+    return res.json({
+      status: 'ready',
+      checks: {
+        database: 'up'
+      }
+    });
+  }
+
+  const dbConnected = mongoose.connection.readyState === 1;
+
+  if (!dbConnected) {
+    return res.status(503).json({
+      status: 'not_ready',
+      checks: {
+        database: 'down'
+      }
+    });
+  }
+
+  return res.json({
+    status: 'ready',
+    checks: {
+      database: 'up'
+    }
+  });
+});
+
 app.use('/api/auth/login', loginLimiter);
 app.use('/api', apiLimiter);
 // Apply CSRF protection to all state-mutating API routes except login
@@ -111,8 +147,10 @@ app.use('/api', (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api', mealRoutes);
+app.use('/api', entitlementRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/reconciliation', reconciliationRoutes);
 
 app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   try {

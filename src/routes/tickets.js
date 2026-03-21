@@ -1,85 +1,276 @@
 const express = require('express');
-const { Employee, MealRecord } = require('../database');
+const { MealRecord } = require('../database');
 const { requireStaff } = require('../middleware/auth');
+const {
+  VALID_MEAL_TYPES,
+  validateConsumptionEligibility,
+  consumeEntitlement,
+  rollbackConsumption
+} = require('../services/entitlementService');
+const { safeWriteAuditLog } = require('../services/auditService');
+const {
+  normalizeMealType,
+  normalizeConsumePayload,
+  assertEmployeeLifecycleActive,
+  findEmployeeByBadgeOrThrow
+} = require('../services/ticketService');
+const { sendError } = require('../utils/apiResponse');
+const { getPagination, paginateArray } = require('../utils/pagination');
 
 const router = express.Router();
-
-const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
 
 router.get('/validate/:badge_number', requireStaff, async (req, res) => {
   try {
     const { badge_number } = req.params;
     const { meal_type, date } = req.query;
+    const actor = req.session.user;
 
-    const employee = await Employee.findOne({ badge_number, active: true });
-    if (!employee) {
-      return res.status(404).json({ error: 'Employee not found' });
+    let employee;
+    try {
+      employee = await findEmployeeByBadgeOrThrow(badge_number);
+    } catch (err) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.validate',
+        entity_type: 'employee',
+        entity_id: badge_number,
+        outcome: 'failure',
+        reason: err.message,
+        metadata: { badge_number, meal_type: meal_type || 'lunch', date: date || new Date().toISOString().split('T')[0] }
+      });
+      return sendError(res, err.status || 404, err.message || 'Employee not found', err.code || 'NOT_FOUND');
+    }
+
+    try {
+      assertEmployeeLifecycleActive(employee);
+    } catch (err) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.validate',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: err.message,
+        metadata: { badge_number }
+      });
+      return sendError(res, err.status || 403, err.message || 'Employee is not active', err.code || 'FORBIDDEN');
     }
 
     const checkDate = date || new Date().toISOString().split('T')[0];
-    const checkMealType = meal_type || 'lunch';
-
-    if (!VALID_MEAL_TYPES.includes(checkMealType)) {
-      return res.status(400).json({ error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` });
+    let checkMealType;
+    try {
+      checkMealType = meal_type ? normalizeMealType(meal_type) : 'lunch';
+    } catch (err) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.validate',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: err.message,
+        metadata: { badge_number, meal_type: checkMealType, date: checkDate }
+      });
+      return sendError(res, err.status || 400, err.message || 'Invalid meal_type', err.code || 'VALIDATION_ERROR');
     }
 
-    const existing = await MealRecord.findOne({
-      employee_id: employee._id,
-      meal_type: checkMealType,
-      consumption_date: checkDate
+    const eligibility = await validateConsumptionEligibility(employee, checkMealType, checkDate);
+    const balance = eligibility.balance || { allowed: 0, consumed: 0 };
+
+    await safeWriteAuditLog({
+      actor_user_id: actor?.id,
+      actor_role: actor?.role,
+      action: 'ticket.validate',
+      entity_type: 'employee',
+      entity_id: employee.id,
+      outcome: eligibility.ok ? 'success' : 'failure',
+      reason: eligibility.ok ? null : eligibility.error,
+      metadata: {
+        badge_number,
+        meal_type: checkMealType,
+        date: checkDate,
+        allowed: balance.allowed,
+        consumed: balance.consumed,
+        remaining: Math.max((balance.allowed || 0) - (balance.consumed || 0), 0)
+      }
     });
 
     res.json({
       employee: employee.toJSON(),
-      can_consume: !existing,
-      already_consumed: !!existing,
+      can_consume: eligibility.ok,
+      already_consumed: eligibility.status === 409,
       meal_type: checkMealType,
-      date: checkDate
+      date: checkDate,
+      allowed: balance.allowed,
+      consumed: balance.consumed,
+      remaining: Math.max((balance.allowed || 0) - (balance.consumed || 0), 0),
+      message: eligibility.ok ? null : eligibility.error
     });
   } catch (err) {
     console.error('Ticket validate error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.post('/consume', requireStaff, async (req, res) => {
   try {
-    const { badge_number, meal_type, canteen_location, notes } = req.body;
+    const { badge_number, meal_type } = req.body;
+    const actor = req.session.user;
 
-    if (!badge_number || !meal_type) {
-      return res.status(400).json({ error: 'badge_number and meal_type are required' });
+    let normalizedPayload;
+    try {
+      normalizedPayload = normalizeConsumePayload(req.body);
+    } catch (err) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'employee',
+        entity_id: badge_number || null,
+        outcome: 'failure',
+        reason: err.message,
+        metadata: { badge_number: badge_number || null, meal_type: meal_type || null }
+      });
+      return sendError(res, err.status || 400, err.message || 'Invalid request body', err.code || 'VALIDATION_ERROR');
     }
 
-    if (!VALID_MEAL_TYPES.includes(meal_type)) {
-      return res.status(400).json({ error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` });
+    const {
+      badgeNumber: normalizedBadge,
+      mealType: normalizedMealType,
+      canteenLocation,
+      notes
+    } = normalizedPayload;
+
+    let employee;
+    try {
+      employee = await findEmployeeByBadgeOrThrow(normalizedBadge);
+    } catch (err) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'employee',
+        entity_id: normalizedBadge,
+        outcome: 'failure',
+        reason: err.message,
+        metadata: { badge_number: normalizedBadge, meal_type: normalizedMealType }
+      });
+      return sendError(res, err.status || 404, err.message || 'Employee not found', err.code || 'NOT_FOUND');
     }
 
-    const employee = await Employee.findOne({ badge_number, active: true });
-    if (!employee) {
-      return res.status(404).json({ error: 'Employee not found' });
+    try {
+      assertEmployeeLifecycleActive(employee);
+    } catch (err) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: err.message,
+        metadata: { badge_number: normalizedBadge, meal_type: normalizedMealType }
+      });
+      return sendError(res, err.status || 403, err.message || 'Employee is not active', err.code || 'FORBIDDEN');
     }
 
     const today = new Date().toISOString().split('T')[0];
+    const eligibility = await validateConsumptionEligibility(employee, normalizedMealType, today);
+    if (!eligibility.ok) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: eligibility.error,
+        metadata: { badge_number, meal_type, date: today }
+      });
+      return sendError(res, eligibility.status, eligibility.error, 'VALIDATION_ERROR');
+    }
+
+    const entitlementResult = await consumeEntitlement(employee, normalizedMealType, today);
+    if (!entitlementResult.ok) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: entitlementResult.error,
+        metadata: { badge_number, meal_type, date: today }
+      });
+      return sendError(res, entitlementResult.status, entitlementResult.error, 'VALIDATION_ERROR');
+    }
 
     try {
       const record = await MealRecord.create({
         employee_id: employee._id,
-        meal_type,
+        meal_type: normalizedMealType,
         consumption_date: today,
         staff_id: req.session.user.id,
-        canteen_location: canteen_location || 'Main Canteen',
-        notes: notes || null
+        canteen_location: canteenLocation,
+        notes
       });
-      res.status(201).json({ message: 'Meal recorded successfully', record: record.toJSON(), employee: employee.toJSON() });
+
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'meal_record',
+        entity_id: record.id,
+        outcome: 'success',
+        metadata: {
+          employee_id: employee.id,
+          badge_number: normalizedBadge,
+          meal_type: normalizedMealType,
+          date: today,
+          remaining: entitlementResult.remaining
+        }
+      });
+
+      res.status(201).json({
+        message: 'Meal recorded successfully',
+        record: record.toJSON(),
+        employee: employee.toJSON(),
+        entitlement: entitlementResult.balance,
+        remaining: entitlementResult.remaining
+      });
     } catch (insertErr) {
       if (insertErr.code === 11000) {
-        return res.status(409).json({ error: 'Meal already recorded for this employee today' });
+        await rollbackConsumption(employee, normalizedMealType, today);
+        await safeWriteAuditLog({
+          actor_user_id: actor?.id,
+          actor_role: actor?.role,
+          action: 'ticket.consume',
+          entity_type: 'employee',
+          entity_id: employee.id,
+          outcome: 'failure',
+          reason: 'Meal already recorded for this employee today',
+          metadata: { badge_number: normalizedBadge, meal_type: normalizedMealType, date: today }
+        });
+        return sendError(res, 409, 'Meal already recorded for this employee today', 'CONFLICT');
       }
+      await rollbackConsumption(employee, normalizedMealType, today);
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.consume',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: 'Meal record insert failed',
+        metadata: { badge_number: normalizedBadge, meal_type: normalizedMealType, date: today }
+      });
       throw insertErr;
     }
   } catch (err) {
     console.error('Ticket consume error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
@@ -91,7 +282,7 @@ router.get('/history', requireStaff, async (req, res) => {
     if (date) filter.consumption_date = date;
     if (meal_type) {
       if (!VALID_MEAL_TYPES.includes(meal_type)) {
-        return res.status(400).json({ error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` });
+        return sendError(res, 400, `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}`, 'VALIDATION_ERROR');
       }
       filter.meal_type = meal_type;
     }
@@ -110,10 +301,16 @@ router.get('/history', requireStaff, async (req, res) => {
       }
       return obj;
     });
-    res.json(result);
+
+    const { hasPagination, page, limit } = getPagination(req.query);
+    if (!hasPagination) {
+      return res.json(result);
+    }
+
+    return res.json(paginateArray(result, page, limit));
   } catch (err) {
     console.error('Ticket history error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 

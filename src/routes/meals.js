@@ -2,8 +2,10 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { MealPlan, MenuItem } = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { sendError } = require('../utils/apiResponse');
 
 const router = express.Router();
+const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
 
 // ── Meal Plans ────────────────────────────────────────────────────────────────
 
@@ -13,18 +15,19 @@ router.get('/meal-plans', requireAuth, async (req, res) => {
     res.json(plans);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.post('/meal-plans', requireAdmin, async (req, res) => {
   try {
     const { name, description, breakfast, lunch, dinner } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: 'Name is required' });
+    if (typeof name !== 'string' || !name.trim()) {
+      return sendError(res, 400, 'Name is required', 'VALIDATION_ERROR');
     }
+
     const plan = await MealPlan.create({
-      name,
+      name: name.trim(),
       description: description || null,
       breakfast: breakfast !== undefined ? Boolean(breakfast) : true,
       lunch: lunch !== undefined ? Boolean(lunch) : true,
@@ -33,18 +36,23 @@ router.post('/meal-plans', requireAdmin, async (req, res) => {
     res.status(201).json(plan);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.put('/meal-plans/:id', requireAdmin, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ error: 'Meal plan not found' });
+      return sendError(res, 404, 'Meal plan not found', 'NOT_FOUND');
     }
     const { name, description, breakfast, lunch, dinner, active } = req.body;
     const updates = {};
-    if (name !== undefined) updates.name = name;
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) {
+        return sendError(res, 400, 'name must be a non-empty string', 'VALIDATION_ERROR');
+      }
+      updates.name = name.trim();
+    }
     if (description !== undefined) updates.description = description;
     if (breakfast !== undefined) updates.breakfast = Boolean(breakfast);
     if (lunch !== undefined) updates.lunch = Boolean(lunch);
@@ -57,28 +65,28 @@ router.put('/meal-plans/:id', requireAdmin, async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!updated) {
-      return res.status(404).json({ error: 'Meal plan not found' });
+      return sendError(res, 404, 'Meal plan not found', 'NOT_FOUND');
     }
     res.json(updated);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.delete('/meal-plans/:id', requireAdmin, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ error: 'Meal plan not found' });
+      return sendError(res, 404, 'Meal plan not found', 'NOT_FOUND');
     }
     const deleted = await MealPlan.findByIdAndDelete(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Meal plan not found' });
+      return sendError(res, 404, 'Meal plan not found', 'NOT_FOUND');
     }
     res.json({ message: 'Meal plan deleted successfully' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
@@ -94,18 +102,25 @@ router.get('/menu-items', requireAuth, async (req, res) => {
     res.json(items);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.post('/menu-items', requireAdmin, async (req, res) => {
   try {
     const { name, description, meal_type, price, available_date } = req.body;
-    if (!name || !meal_type || !available_date) {
-      return res.status(400).json({ error: 'name, meal_type, and available_date are required' });
+    if (typeof name !== 'string' || !name.trim() || typeof meal_type !== 'string' || typeof available_date !== 'string') {
+      return sendError(res, 400, 'name, meal_type, and available_date are required', 'VALIDATION_ERROR');
     }
+    if (!VALID_MEAL_TYPES.includes(meal_type)) {
+      return sendError(res, 400, `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}`, 'VALIDATION_ERROR');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(available_date)) {
+      return sendError(res, 400, 'available_date must be in YYYY-MM-DD format', 'VALIDATION_ERROR');
+    }
+
     const item = await MenuItem.create({
-      name,
+      name: name.trim(),
       description: description || null,
       meal_type,
       price: price || 0,
@@ -114,22 +129,37 @@ router.post('/menu-items', requireAdmin, async (req, res) => {
     res.status(201).json(item);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.put('/menu-items/:id', requireAdmin, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ error: 'Menu item not found' });
+      return sendError(res, 404, 'Menu item not found', 'NOT_FOUND');
     }
     const { name, description, meal_type, price, available_date, active } = req.body;
     const updates = {};
-    if (name !== undefined) updates.name = name;
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) {
+        return sendError(res, 400, 'name must be a non-empty string', 'VALIDATION_ERROR');
+      }
+      updates.name = name.trim();
+    }
     if (description !== undefined) updates.description = description;
-    if (meal_type !== undefined) updates.meal_type = meal_type;
+    if (meal_type !== undefined) {
+      if (!VALID_MEAL_TYPES.includes(meal_type)) {
+        return sendError(res, 400, `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}`, 'VALIDATION_ERROR');
+      }
+      updates.meal_type = meal_type;
+    }
     if (price !== undefined) updates.price = price;
-    if (available_date !== undefined) updates.available_date = available_date;
+    if (available_date !== undefined) {
+      if (typeof available_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(available_date)) {
+        return sendError(res, 400, 'available_date must be in YYYY-MM-DD format', 'VALIDATION_ERROR');
+      }
+      updates.available_date = available_date;
+    }
     if (active !== undefined) updates.active = Boolean(active);
 
     const updated = await MenuItem.findByIdAndUpdate(
@@ -138,28 +168,28 @@ router.put('/menu-items/:id', requireAdmin, async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!updated) {
-      return res.status(404).json({ error: 'Menu item not found' });
+      return sendError(res, 404, 'Menu item not found', 'NOT_FOUND');
     }
     res.json(updated);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.delete('/menu-items/:id', requireAdmin, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ error: 'Menu item not found' });
+      return sendError(res, 404, 'Menu item not found', 'NOT_FOUND');
     }
     const deleted = await MenuItem.findByIdAndDelete(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Menu item not found' });
+      return sendError(res, 404, 'Menu item not found', 'NOT_FOUND');
     }
     res.json({ message: 'Menu item deleted successfully' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 

@@ -2,35 +2,50 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const { User } = require('../database');
 const { requireAuth } = require('../middleware/auth');
+const { sendError } = require('../utils/apiResponse');
 
 const router = express.Router();
 
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password required' });
+    if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password.trim()) {
+      return sendError(res, 400, 'Username and password required', 'VALIDATION_ERROR');
     }
-    const user = await User.findOne({ username });
+
+    const normalizedUsername = username.trim();
+    const user = await User.findOne({ username: normalizedUsername });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return sendError(res, 401, 'Invalid credentials', 'INVALID_CREDENTIALS');
     }
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return sendError(res, 401, 'Invalid credentials', 'INVALID_CREDENTIALS');
     }
-    req.session.user = { id: user.id, username: user.username, role: user.role };
-    res.json({ user: { id: user.id, username: user.username, role: user.role } });
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      employee_id: user.employee_id || null
+    };
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        employee_id: user.employee_id || null
+      }
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
   }
 });
 
 router.post('/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
-      return res.status(500).json({ error: 'Could not log out' });
+      return sendError(res, 500, 'Could not log out', 'SESSION_ERROR');
     }
     res.json({ message: 'Logged out successfully' });
   });
