@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Dangote CMS</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="sidebar-brand">🏭 Dangote CMS</div>
+    <div class="sidebar-nav">
+      <a href="/dashboard.html" class="nav-link active">📊 Dashboard</a>
+      <a href="/employees.html" class="nav-link">👥 Employees</a>
+      <a href="/meals.html" class="nav-link">🍽️ Meal Plans</a>
+      <a href="/tickets.html" class="nav-link">🎫 Tickets</a>
+      <a href="/reports.html" class="nav-link">📈 Reports</a>
+    </div>
+  </nav>
+  <div class="main-content">
+    <div class="header">
+      <h2>Dashboard</h2>
+      <div>
+        Welcome, <strong id="current-user"></strong>
+        <button id="logout-btn" class="btn btn-danger btn-sm" style="margin-left: 15px;">Logout</button>
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3 id="total-employees">0</h3>
+          <p>Total Employees</p>
+        </div>
+        <div class="stat-card">
+          <h3 id="meals-today">0</h3>
+          <p>Meals Today</p>
+        </div>
+        <div class="stat-card">
+          <h3 id="meals-month">0</h3>
+          <p>Meals This Month</p>
+        </div>
+        <div class="stat-card">
+          <h3 id="active-plans">0</h3>
+          <p>Active Meal Plans</p>
+        </div>
+      </div>
+      <div class="table-container">
+        <div style="padding: 15px 20px; font-weight: bold; border-bottom: 1px solid var(--border);">Recent Activity</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Employee #</th>
+              <th>Meal Type</th>
+              <th>Date</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="activity-table">
+            <tr><td colspan="5" style="text-align:center; padding: 20px; color: #666;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+    async function loadDashboard() {
+      const res = await apiFetch('/dashboard/stats');
+      if (!res || !res.ok) return;
+      const data = await res.json();
+      document.getElementById('total-employees').textContent = data.totalEmployees;
+      document.getElementById('meals-today').textContent = data.mealsToday;
+      document.getElementById('meals-month').textContent = data.mealsThisMonth;
+      document.getElementById('active-plans').textContent = data.activePlans ?? 0;
+
+      const tbody = document.getElementById('activity-table');
+      if (!data.recentActivity || data.recentActivity.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #666;">No activity yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.recentActivity.map(r => `
+        <tr>
+          <td>${r.employee_name}</td>
+          <td>${r.employee_number}</td>
+          <td><span class="badge badge-success">${r.meal_type}</span></td>
+          <td>${r.consumption_date}</td>
+          <td>${new Date(r.consumed_at).toLocaleTimeString()}</td>
+        </tr>
+      `).join('');
+    }
+    document.addEventListener('DOMContentLoaded', loadDashboard);
+  </script>
+</body>
+</html>

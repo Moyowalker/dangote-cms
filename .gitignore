@@ -1,6 +1,12 @@
 node_modules/
-*.db
-*.db-shm
-*.db-wal
 .env
 dist/
+coverage/
+.DS_Store
+# SQLite legacy artifacts (no longer used)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+

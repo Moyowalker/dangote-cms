@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meal Plans - Dangote CMS</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="sidebar-brand">🏭 Dangote CMS</div>
+    <div class="sidebar-nav">
+      <a href="/dashboard.html" class="nav-link">📊 Dashboard</a>
+      <a href="/employees.html" class="nav-link">👥 Employees</a>
+      <a href="/meals.html" class="nav-link active">🍽️ Meal Plans</a>
+      <a href="/tickets.html" class="nav-link">🎫 Tickets</a>
+      <a href="/reports.html" class="nav-link">📈 Reports</a>
+    </div>
+  </nav>
+  <div class="main-content">
+    <div class="header">
+      <h2>Meal Management</h2>
+      <div>
+        Welcome, <strong id="current-user"></strong>
+        <button id="logout-btn" class="btn btn-danger btn-sm" style="margin-left: 15px;">Logout</button>
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('plans', event)">Meal Plans</button>
+        <button class="tab-btn" onclick="switchTab('menu', event)">Menu Items</button>
+      </div>
+
+      <!-- Meal Plans Tab -->
+      <div id="tab-plans" class="tab-content active">
+        <div class="toolbar">
+          <button class="btn btn-secondary" onclick="openPlanModal()">+ Add Meal Plan</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Description</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="plans-table">
+              <tr><td colspan="7" style="text-align:center; padding: 20px; color: #666;">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Menu Items Tab -->
+      <div id="tab-menu" class="tab-content">
+        <div class="toolbar">
+          <input type="date" id="menu-date-filter" class="form-control" style="max-width: 200px;">
+          <button class="btn btn-primary" onclick="loadMenuItems()">Filter</button>
+          <button class="btn btn-secondary" onclick="openMenuModal()">+ Add Menu Item</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Meal Type</th><th>Price</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="menu-table">
+              <tr><td colspan="6" style="text-align:center; padding: 20px; color: #666;">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meal Plan Modal -->
+  <div class="modal-overlay" id="plan-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="plan-modal-title">Add Meal Plan</span>
+        <button class="modal-close" onclick="closePlanModal()">&times;</button>
+      </div>
+      <form id="plan-form">
+        <input type="hidden" id="plan-id">
+        <div class="form-group">
+          <label>Plan Name *</label>
+          <input type="text" id="plan-name" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="plan-description" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="plan-breakfast" checked> Includes Breakfast</label>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="plan-lunch" checked> Includes Lunch</label>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="plan-dinner"> Includes Dinner</label>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+          <button type="button" class="btn btn-primary" onclick="closePlanModal()">Cancel</button>
+          <button type="submit" class="btn btn-secondary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Menu Item Modal -->
+  <div class="modal-overlay" id="menu-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="menu-modal-title">Add Menu Item</span>
+        <button class="modal-close" onclick="closeMenuModal()">&times;</button>
+      </div>
+      <form id="menu-form">
+        <input type="hidden" id="menu-id">
+        <div class="form-group">
+          <label>Item Name *</label>
+          <input type="text" id="menu-name" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="menu-description" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Meal Type *</label>
+          <select id="menu-meal-type" class="form-control" required>
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Price (₦)</label>
+          <input type="number" id="menu-price" class="form-control" value="0" min="0">
+        </div>
+        <div class="form-group">
+          <label>Available Date *</label>
+          <input type="date" id="menu-date" class="form-control" required>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+          <button type="button" class="btn btn-primary" onclick="closeMenuModal()">Cancel</button>
+          <button type="submit" class="btn btn-secondary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script src="/js/meals.js"></script>
+</body>
+</html>
