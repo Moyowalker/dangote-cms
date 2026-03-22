@@ -8,7 +8,9 @@
     "dev": "node src/server.js",
     "test": "jest --forceExit",
     "migrate:worker-identifier": "node scripts/migrate-worker-identifiers.js",
-    "seed:nonprod": "node scripts/seed-nonprod.js"
+    "seed:nonprod": "node scripts/seed-nonprod.js",
+    "deploy:fly": "flyctl deploy --config fly.toml",
+    "deploy:fly:logs": "flyctl logs --config fly.toml"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

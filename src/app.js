@@ -1,6 +1,6 @@
 const express = require('express');
 const session = require('express-session');
-const MongoStore = require('connect-mongo');
+const connectMongo = require('connect-mongo');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { doubleCsrf } = require('csrf-csrf');
@@ -11,6 +11,7 @@ const { initializeDatabase, Employee, MealRecord, MealPlan, AuditLog } = require
 
 const isTest = process.env.NODE_ENV === 'test';
 const isProduction = process.env.NODE_ENV === 'production';
+const MongoStore = connectMongo.default || connectMongo.MongoStore || connectMongo;
 
 // Fail fast outside tests when SESSION_SECRET is not explicitly configured.
 if (!isTest && !process.env.SESSION_SECRET) {

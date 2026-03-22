@@ -288,6 +288,20 @@ Run backend tests from repository root:
 npm test
 ```
 
+## Fly Deployment (Backend)
+
+Fly config for backend deployment is included:
+
+- `fly.toml`
+- `Dockerfile`
+- `docs/operations/fly-deployment.md`
+
+Deploy command:
+
+```bash
+npm run deploy:fly
+```
+
 ## Migrations and Seeding
 
 Initialize worker identifiers for legacy records:
