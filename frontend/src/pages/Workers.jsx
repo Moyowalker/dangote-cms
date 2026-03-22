@@ -89,12 +89,12 @@ export default function Workers() {
       <div className="card">
         <div className="form-row mb-3">
           <div className="form-group">
-            <label>Filter by Department</label>
-            <input className="form-control" placeholder="All departments" value={filterDept} onChange={e => setFilterDept(e.target.value)} />
+            <label htmlFor="workers-filter-department">Filter by Department</label>
+            <input id="workers-filter-department" className="form-control" placeholder="All departments" value={filterDept} onChange={e => setFilterDept(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>Status</label>
-            <select className="form-control" value={filterActive} onChange={e => setFilterActive(e.target.value)}>
+            <label htmlFor="workers-filter-status">Status</label>
+            <select id="workers-filter-status" className="form-control" value={filterActive} onChange={e => setFilterActive(e.target.value)}>
               <option value="">All</option>
               <option value="true">Active</option>
               <option value="false">Inactive</option>
@@ -152,33 +152,33 @@ export default function Workers() {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label>Employee Number</label>
-                <input className="form-control" value={form.employee_number} onChange={e => setForm({...form, employee_number: e.target.value})} required disabled={!!editingWorker} />
+                <label htmlFor="worker-employee-number">Employee Number</label>
+                <input id="worker-employee-number" className="form-control" value={form.employee_number} onChange={e => setForm({...form, employee_number: e.target.value})} required disabled={!!editingWorker} />
               </div>
               <div className="form-group">
-                <label>Badge Number</label>
-                <input className="form-control" value={form.badge_number} onChange={e => setForm({...form, badge_number: e.target.value})} required />
+                <label htmlFor="worker-badge-number">Badge Number</label>
+                <input id="worker-badge-number" className="form-control" value={form.badge_number} onChange={e => setForm({...form, badge_number: e.target.value})} required />
               </div>
               <div className="form-group">
-                <label>Full Name</label>
-                <input className="form-control" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
+                <label htmlFor="worker-full-name">Full Name</label>
+                <input id="worker-full-name" className="form-control" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
               </div>
               <div className="form-group">
-                <label>Department</label>
-                <input className="form-control" value={form.department} onChange={e => setForm({...form, department: e.target.value})} required />
+                <label htmlFor="worker-department">Department</label>
+                <input id="worker-department" className="form-control" value={form.department} onChange={e => setForm({...form, department: e.target.value})} required />
               </div>
               <div className="form-group">
-                <label>Email</label>
-                <input className="form-control" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+                <label htmlFor="worker-email">Email</label>
+                <input id="worker-email" className="form-control" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
               </div>
               <div className="form-group">
-                <label>Phone</label>
-                <input className="form-control" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+                <label htmlFor="worker-phone">Phone</label>
+                <input id="worker-phone" className="form-control" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
               </div>
               {editingWorker && (
                 <div className="form-group">
-                  <label>Status</label>
-                  <select className="form-control" value={String(form.active)} onChange={e => setForm({...form, active: e.target.value === 'true'})}>
+                  <label htmlFor="worker-edit-status">Status</label>
+                  <select id="worker-edit-status" className="form-control" value={String(form.active)} onChange={e => setForm({...form, active: e.target.value === 'true'})}>
                     <option value="true">Active</option>
                     <option value="false">Inactive</option>
                   </select>

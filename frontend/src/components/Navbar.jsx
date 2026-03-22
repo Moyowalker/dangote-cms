@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isVendorRole } from '../auth/roles';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -22,12 +23,13 @@ export default function Navbar() {
           <>
             <li><NavLink to="/workers">Workers</NavLink></li>
             <li><NavLink to="/reports">Reports</NavLink></li>
+            <li><NavLink to="/reconciliation">Reconciliation</NavLink></li>
           </>
         )}
-        {(user.role === 'admin' || user.role === 'staff') && (
+        {isVendorRole(user.role) && (
           <li><NavLink to="/tickets">Tickets</NavLink></li>
         )}
-        {(user.role === 'admin' || user.role === 'staff') && (
+        {isVendorRole(user.role) && (
           <li><NavLink to="/vendor">Vendor</NavLink></li>
         )}
       </ul>

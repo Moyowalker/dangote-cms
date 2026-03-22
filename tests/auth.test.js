@@ -6,9 +6,14 @@ const request = require('supertest');
 const bcrypt = require('bcrypt');
 const app = require('../src/app');
 const { initializeDatabase, closeDatabase, User } = require('../src/database');
+const { resetRequestMetrics } = require('../src/services/requestMetricsService');
 
 beforeAll(async () => {
   await initializeDatabase();
+});
+
+beforeEach(() => {
+  resetRequestMetrics();
 });
 
 afterAll(async () => {
@@ -96,7 +101,12 @@ describe('Auth Routes', () => {
     expect(res.body).toHaveProperty('risk_indicators');
     expect(res.body).toHaveProperty('operational_indicators');
     expect(res.body.risk_indicators).toHaveProperty('failed_attempts_today');
+    expect(res.body.risk_indicators).toHaveProperty('failed_attempts_by_reason');
     expect(res.body.operational_indicators).toHaveProperty('redemptions_today');
+    expect(res.body.operational_indicators).toHaveProperty('failed_attempts_by_location');
+    expect(res.body.operational_indicators).toHaveProperty('ticket_endpoint_health');
+    expect(res.body.operational_indicators.ticket_endpoint_health['ticket.validate']).toBeDefined();
+    expect(res.body.operational_indicators.ticket_endpoint_health['ticket.consume']).toBeDefined();
   });
 
   test('viewer role can access reporting endpoints', async () => {

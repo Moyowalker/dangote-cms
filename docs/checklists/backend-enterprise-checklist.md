@@ -1,87 +1,105 @@
-# Backend Enterprise Checklist (MongoDB-First)
+# Backend Enterprise Checklist (Live Canteen Readiness)
 
-Use this checklist as the delivery gate for all backend work.
+Use this checklist as the backend go-live gate for a busy canteen environment.
 
-Status update: Completed items checked as part of the MongoDB canonicalization and cleanup pass on 2026-03-21, plus entitlement admin API/assignment, ticket-flow audit logging with tests, validation/error-envelope standardization, employee-domain service-layer extraction, ticket-domain service extraction for validation/consume rules, reporting/reconciliation service extraction, role-based employee filtering, worker lifecycle modeling, tamper-evident append-only audit chain, reconciliation aggregation endpoints/tests, reporting filters for date range/vendor/worker category/status, health/readiness operational endpoints, explicit security headers/CORS policy, structured logging with request IDs, signed QR token issue/verification flow with persisted metadata, expanded core domain models (Vendor, VendorRestriction, Transaction, ReconciliationRecord, QRTokenMetadata), vendor restriction enforcement and duplicate-window redemption checks in validation flow, unit tests for service-layer entitlement logic, GitHub Actions CI test pipeline configuration on 2026-03-21, and full readiness closure (RBAC matrix, migration/seed scripts, worker_identifier index migration support, dashboard risk indicators, trust-boundary enforcement, secret hardening, error monitoring strategy, and deployment promotion workflow) on 2026-03-22.
+Primary question: when the line is long, requests cluster at the same time, and operators need an immediate answer, will the backend return a correct and auditable outcome without creating ambiguity or trust loss?
 
-## 1. Architecture and Structure
+Status note: this checklist replaces the earlier feature-completeness framing. Existing checkmarks from the MongoDB cleanup pass should be re-evaluated against operational readiness, not carried forward automatically.
 
-- [x] Single canonical backend is defined and documented (MongoDB stack only)
-- [x] Legacy/duplicate backend folders are identified and tagged for removal
-- [x] Backend is organized by domain boundaries (auth, worker, vendor, entitlement, transaction, reporting, audit, reconciliation)
-- [x] Business logic is in service layer, not route handlers
-- [x] Shared middleware is centralized (auth, RBAC, validation, error handling, rate limiting)
-- [x] Config is environment-driven and centralized
+Assessment update: first-pass status applied against the current backend on 2026-03-22.
 
-## 2. Data Model (MongoDB)
+Known blockers before this can be treated as live-canteen ready:
 
-- [x] Core collections exist: User, Worker, WorkerCategory, EntitlementPolicy, WorkerEntitlementBalance, Vendor, VendorRestriction, Transaction, AuditLog, ReconciliationRecord, QRTokenMetadata
-- [x] Worker has unique worker_identifier independent of Mongo _id
-- [x] Worker lifecycle states are modeled: active, suspended, deactivated
-- [x] Indexes exist for all high-cardinality lookup paths (worker_identifier, vendor_id/date, transaction reference, audit timestamp)
-- [x] Unique and compound indexes are defined for duplicate prevention and integrity constraints
-- [x] Migration/seed scripts exist for local and non-production bootstrapping
+- Legacy `staff` compatibility still exists in backend persistence and some internals, though runtime auth responses now normalize to `vendor`
+- Domain naming still mixes worker and employee concepts, which increases integration and support ambiguity
+- The Jest suite passes, but it still force-exits after completion, so the test environment is not fully clean
+- Throughput and latency expectations are observable but not yet enforced as explicit operational budgets
 
-## 3. Auth and RBAC
+## 1. Transaction Certainty and Queue Safety
 
-- [x] Strong authentication implemented (session or JWT strategy is consistent and documented)
-- [x] RBAC roles defined: Admin, Vendor, Viewer (HR optional)
-- [x] Route-level authorization enforced for all protected endpoints
-- [x] Role-based data filtering enforced server-side
-- [x] Sensitive endpoints have stricter rate limits
+- [x] Validation and consumption decisions remain backend-owned; clients cannot self-assert eligibility or success
+- [x] Manual worker_identifier validation path exists
+- [x] Signed QR token validation path exists server-side
+- [x] Duplicate and near-simultaneous redemption attempts are blocked server-side
+- [x] Entitlement deduction and transaction write are treated as one atomic outcome
+- [ ] Backend exposes a first-class recovery path for clients to resolve request outcomes after timeout or dropped response
+- [ ] API contract explicitly distinguishes confirmed failure from outcome-unknown states for frontend recovery
 
-## 4. Validation, Security, and Compliance
+## 2. Auth, RBAC, and Trust Boundaries
 
-- [x] Input validation applied on all write endpoints
-- [x] Validation errors are explicit, consistent, and non-leaky
-- [x] QR payload strategy is signed and verified server-side
-- [x] Frontend is never trusted for balance/eligibility decisions
-- [x] Security headers and CORS policy are explicitly configured
-- [x] Secret management avoids hardcoded credentials
+- [x] Session-based authentication is consistent and documented
+- [~] RBAC role model is aligned at the runtime API boundary, but legacy `staff` compatibility still exists in persisted and internal backend paths
+- [x] Route-level authorization is enforced for protected endpoints
+- [x] Server-side data filtering exists for role-scoped access
+- [x] Sensitive entry points have stricter rate limits than general API traffic
+- [x] Frontend and callers are not trusted for entitlement, balance, or restricted-field decisions
 
-## 5. Worker-Centric Entitlement Flow
+## 3. Data Model and Integrity
 
-- [x] Vendor can validate by QR token or manual worker_identifier
-- [x] Validation checks include worker existence, active state, suspension, entitlement sufficiency, vendor restrictions, and duplicate window checks
-- [x] Deduction and transaction write happen atomically
-- [x] Duplicate and near-simultaneous redemption attempts are blocked
-- [x] Success and failure outcomes are both audit logged
+- [x] Core MongoDB collections exist for users, workers, entitlements, vendors, transactions, audits, reconciliation, and QR metadata
+- [x] Worker lifecycle states are modeled explicitly
+- [x] Duplicate-prevention and lookup indexes exist for key operational paths
+- [x] Migration and seed scripts exist for bootstrap and identifier migration work
+- [ ] Entity naming is consistent enough that worker, employee, vendor, and staff concepts do not blur operational meaning
+- [ ] Historical and operational records use consistently named actor fields across transaction and reconciliation paths
+
+## 4. Validation, Error Contracts, and Safety
+
+- [x] Validation is applied on write endpoints and critical query-driven report paths
+- [x] Error envelopes are explicit and non-leaky
+- [x] Invalid QR tokens, expired tokens, and malformed reporting queries are rejected explicitly
+- [x] Client-supplied protected fields for consumption outcomes are ignored or blocked
+- [ ] Error contracts are shaped strongly enough for clients to distinguish retryable, non-retryable, and escalation-required failures without inference
+- [ ] Timeout and degraded-dependency behavior is documented as part of the backend contract, not left to generic 500 handling
+
+## 5. Degraded Dependency and Failure Handling
+
+- [x] Health and readiness endpoints exist and include database readiness
+- [x] Startup database failures fail fast and are reported
+- [x] Unhandled promise rejections and uncaught exceptions are reported through the error monitoring service
+- [ ] Backend defines clear runtime behavior for transient Mongo latency, partial downstream failure, or overload beyond generic errors
+- [ ] Request shedding, queue protection, or explicit overload signaling is documented for rush-period behavior
+- [ ] Recovery semantics after a write succeeds but response delivery fails are exposed to clients or operators in a first-class way
 
 ## 6. Reporting, Audit, and Reconciliation
 
-- [x] Reports support date range, vendor, worker category, and status filters
-- [x] Dashboard endpoints expose operational and fraud-risk indicators
-- [x] Audit log captures actor, action, entity, timestamp, outcome, and metadata
-- [x] Audit records are append-only and tamper-evident strategy is defined
-- [x] Reconciliation endpoints aggregate by vendor and date with discrepancy indicators
+- [x] Reporting endpoints support date range, vendor, worker category, and status filters
+- [x] Dashboard indicators expose useful risk and exception counts
+- [x] Success and failure ticket-consume paths are audit logged
+- [x] Audit strategy is append-only and tamper-evident by design intent
+- [x] Reconciliation endpoints aggregate vendor-day activity with discrepancy indicators
+- [ ] Audit and reconciliation terminology is fully aligned with the current role model and actor naming
 
-## 7. API Quality
+## 7. API Operability and Documentation
 
-- [x] API contracts are action-oriented (validate, redeem, suspend, reconcile) and versioned when necessary
-- [x] Error envelope format is consistent across modules
-- [x] Pagination is implemented for list endpoints
-- [x] API docs are updated with request and response examples
+- [x] Core backend routes are action-oriented around validate, consume, report, and reconcile operations
+- [x] Pagination exists for list-style endpoints
+- [x] README documents the current API surface and examples
+- [ ] API docs clearly describe operationally important response states such as duplicate-blocked, already-consumed, and recovery-safe follow-up behavior
+- [ ] Backend contracts are documented from the perspective of canteen operations, not only endpoint completeness
 
-## 8. Testing and Quality Gates
+## 8. Observability and Operations
 
-- [x] Unit tests for services (validation, deduction, duplicate protection, restriction checks)
-- [x] Integration tests for critical flows (QR/manual validation, deduction, suspension rejection, insufficient balance)
-- [x] RBAC tests for all protected routes
-- [x] Reconciliation and reporting aggregation tests
-- [x] Audit creation tests for success and failure paths
-- [x] CI test pipeline passes before merge
+- [x] Structured request logging includes request IDs and duration
+- [x] Error monitoring strategy is documented
+- [x] Deployment and promotion documentation exists
+- [x] Dashboard indicators include failure and duplicate-window signals useful for live operations
+- [ ] Alert thresholds and incident playbooks are complete enough for repeated rush-hour backend degradation
+- [ ] Operational SLOs or internal targets exist for validation latency, consume latency, readiness degradation, and error spikes
 
-## 9. Observability and Operations
+## 9. Testing and Release Gates
 
-- [x] Structured logging with correlation/request IDs
-- [x] Health, readiness, and database connectivity endpoints are available
-- [x] Error monitoring strategy is defined
-- [x] Deployment config supports environment promotion
+- [x] Service and route tests cover critical validation, consumption, duplicate protection, reporting, reconciliation, and RBAC paths
+- [x] QR issue and verification flows are covered by tests
+- [x] Current backend Jest suite passes
+- [ ] Test runtime exits cleanly without force-exit or open-handle warnings
+- [ ] Tests cover degraded scenarios such as database slowness, response-loss ambiguity, and operational recovery behavior
+- [ ] Release sign-off includes evidence for concurrency and lunch-rush style load, not only functional correctness
 
-## 10. Cleanup and Decommissioning (MongoDB Direction)
+## 10. Cleanup and Decommissioning Discipline
 
-- [x] Remove SQLite-specific packages, configs, and route logic once Mongo replacements are live
-- [x] Remove duplicate backend implementation after migration completion and smoke tests
-- [x] Remove stale tests tied to deprecated API contracts
-- [x] Update README and runbooks to reflect MongoDB-only backend
-- [x] Verify no references remain to removed files via workspace search before merge
+- [x] MongoDB is the canonical backend direction and legacy SQLite direction is documented as removed
+- [x] README and operational docs reflect the current MongoDB backend surface
+- [ ] Remaining naming and compatibility residue from older role or domain models is removed
+- [ ] Deprecated public pages and stale backend-facing assets are fully decommissioned where no longer part of the supported path
+- [ ] Workspace search verifies no stale references remain to retired backend contracts before merge

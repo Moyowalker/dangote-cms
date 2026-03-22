@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const { User } = require('../database');
 const { requireAuth } = require('../middleware/auth');
 const { sendError } = require('../utils/apiResponse');
+const { normalizeSessionUser } = require('../utils/roles');
 
 const router = express.Router();
 
@@ -22,19 +23,14 @@ router.post('/login', async (req, res) => {
     if (!valid) {
       return sendError(res, 401, 'Invalid credentials', 'INVALID_CREDENTIALS');
     }
-    req.session.user = {
+    req.session.user = normalizeSessionUser({
       id: user.id,
       username: user.username,
       role: user.role,
       employee_id: user.employee_id || null
-    };
+    });
     res.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        employee_id: user.employee_id || null
-      }
+      user: req.session.user
     });
   } catch (err) {
     console.error(err);
@@ -52,6 +48,7 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
+  req.session.user = normalizeSessionUser(req.session.user);
   res.json({ user: req.session.user });
 });
 

@@ -15,6 +15,8 @@ Web-based canteen management platform for digitized meal operations.
 - `viewer`: read-only reporting, reconciliation, and dashboard indicators
 - `hr` (optional): read-only reporting access (same as viewer)
 
+Legacy compatibility note: persisted `staff` users are normalized to `vendor` at the backend API boundary so frontend clients and current documentation consume a single canonical vendor role.
+
 Legacy SQLite backend has been removed. The repository now has a single backend direction.
 
 ## Project Structure
@@ -101,6 +103,7 @@ npm run dev
 ### Reporting and Dashboard
 
 - `GET /api/reports/daily`
+- `GET /api/reports/failures`
 - `GET /api/reports/department`
 - `GET /api/reports/employee/:id`
 - `GET /api/reconciliation/vendor-daily`
@@ -288,19 +291,9 @@ Run backend tests from repository root:
 npm test
 ```
 
-## Fly Deployment (Backend)
+## Deployment Notes
 
-Fly config for backend deployment is included:
-
-- `fly.toml`
-- `Dockerfile`
-- `docs/operations/fly-deployment.md`
-
-Deploy command:
-
-```bash
-npm run deploy:fly
-```
+Application deployment remains supported through repository scripts and infrastructure config, but environment-specific runbooks and secret-handling procedures are intentionally kept outside the public codebase.
 
 ## Migrations and Seeding
 
@@ -328,3 +321,7 @@ Use the checklists during feature delivery:
 
 - `docs/checklists/backend-enterprise-checklist.md`
 - `docs/checklists/frontend-enterprise-checklist.md`
+
+For founder-led pre-go-live testing, use:
+
+- `docs/operations/founder-frontend-go-live-testing-plan.md`

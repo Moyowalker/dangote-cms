@@ -8,6 +8,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 const { initializeDatabase, Employee, MealRecord, MealPlan, AuditLog } = require('./database');
+const { beginTrackedRequest, finishTrackedRequest, getRequestMetricsSnapshot } = require('./services/requestMetricsService');
 
 const isTest = process.env.NODE_ENV === 'test';
 const isProduction = process.env.NODE_ENV === 'production';
@@ -56,8 +57,26 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', requestId);
 
   const startedAt = Date.now();
-  res.on('finish', () => {
+  const metricsTracker = beginTrackedRequest({
+    requestId,
+    method: req.method,
+    originalUrl: req.originalUrl,
+    startedAt
+  });
+
+  let finalized = false;
+  const finalizeRequest = () => {
+    if (finalized) {
+      return;
+    }
+
+    finalized = true;
     const durationMs = Date.now() - startedAt;
+    finishTrackedRequest(metricsTracker, {
+      finishedAt: Date.now(),
+      statusCode: res.statusCode
+    });
+
     console.info(JSON.stringify({
       level: 'info',
       request_id: requestId,
@@ -66,7 +85,10 @@ app.use((req, res, next) => {
       status: res.statusCode,
       duration_ms: durationMs
     }));
-  });
+  };
+
+  res.on('finish', finalizeRequest);
+  res.on('close', finalizeRequest);
 
   next();
 });
@@ -263,21 +285,32 @@ app.get('/api/dashboard/indicators', requireReportViewer, async (req, res) => {
       AuditLog.find({ action: 'ticket.consume' })
     ]);
 
-    const failedAttemptsToday = consumeAudits.filter((entry) => {
+    const consumeAuditsToday = consumeAudits.filter((entry) => {
       const createdAt = entry.created_at instanceof Date
         ? entry.created_at.toISOString().split('T')[0]
         : String(entry.created_at || '').split('T')[0];
-      return entry.outcome === 'failure' && createdAt === today;
-    }).length;
+      return createdAt === today;
+    });
 
-    const duplicateWindowBlocksToday = consumeAudits.filter((entry) => {
-      const createdAt = entry.created_at instanceof Date
-        ? entry.created_at.toISOString().split('T')[0]
-        : String(entry.created_at || '').split('T')[0];
+    const failedConsumeAuditsToday = consumeAuditsToday.filter((entry) => entry.outcome === 'failure');
+    const failedAttemptsToday = failedConsumeAuditsToday.length;
+
+    const duplicateWindowBlocksToday = failedConsumeAuditsToday.filter((entry) => {
       return entry.outcome === 'failure'
-        && createdAt === today
         && String(entry.reason || '').toLowerCase().includes('duplicate');
     }).length;
+
+    const failureReasonsToday = failedConsumeAuditsToday.reduce((acc, entry) => {
+      const key = String(entry.reason || 'Unknown failure').trim() || 'Unknown failure';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const failedAttemptsByLocation = failedConsumeAuditsToday.reduce((acc, entry) => {
+      const key = entry.metadata?.canteen_location || 'Unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
 
     const redemptionsByLocation = todayRecords.reduce((acc, record) => {
       const key = record.canteen_location || 'Unknown';
@@ -289,11 +322,14 @@ app.get('/api/dashboard/indicators', requireReportViewer, async (req, res) => {
       date: today,
       risk_indicators: {
         failed_attempts_today: failedAttemptsToday,
-        duplicate_window_blocks_today: duplicateWindowBlocksToday
+        duplicate_window_blocks_today: duplicateWindowBlocksToday,
+        failed_attempts_by_reason: failureReasonsToday
       },
       operational_indicators: {
         redemptions_today: todayRecords.length,
-        redemptions_by_location: redemptionsByLocation
+        redemptions_by_location: redemptionsByLocation,
+        failed_attempts_by_location: failedAttemptsByLocation,
+        ticket_endpoint_health: getRequestMetricsSnapshot()
       }
     });
   } catch (err) {

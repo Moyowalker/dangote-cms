@@ -1,16 +1,12 @@
 const { sendError } = require('../utils/apiResponse');
-
-const ROLE = {
-  ADMIN: 'admin',
-  VENDOR: 'vendor',
-  VIEWER: 'viewer',
-  HR: 'hr',
-  STAFF: 'staff',
-  EMPLOYEE: 'employee'
-};
+const { ROLE, canonicalizeRole } = require('../utils/roles');
 
 function hasAnyRole(req, roles) {
-  return Boolean(req.session && req.session.user && roles.includes(req.session.user.role));
+  return Boolean(
+    req.session
+      && req.session.user
+      && roles.includes(canonicalizeRole(req.session.user.role))
+  );
 }
 
 function requireAuth(req, res, next) {
@@ -34,8 +30,8 @@ function requireStaff(req, res, next) {
   if (!req.session || !req.session.user) {
     return sendError(res, 401, 'Authentication required', 'AUTH_REQUIRED');
   }
-  if (!hasAnyRole(req, [ROLE.ADMIN, ROLE.STAFF, ROLE.VENDOR])) {
-    return sendError(res, 403, 'Vendor or staff access required', 'FORBIDDEN');
+  if (!hasAnyRole(req, [ROLE.ADMIN, ROLE.VENDOR])) {
+    return sendError(res, 403, 'Vendor access required', 'FORBIDDEN');
   }
   next();
 }

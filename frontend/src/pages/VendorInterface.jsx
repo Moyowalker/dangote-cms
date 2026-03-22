@@ -1,63 +1,295 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
+import QrScannerPanel from '../components/QrScannerPanel';
+
+const REQUEST_TIMEOUT_MS = 8000;
+const PENDING_ATTEMPT_STORAGE_KEY = 'dangote-vendor-pending-attempt';
+
+function isOutcomeUnknownError(error) {
+  return error.code === 'ECONNABORTED' || !error.response;
+}
+
+function buildInitialValidationState() {
+  return { status: 'idle', data: null, error: null };
+}
+
+function buildInitialRedeemState() {
+  return { status: 'idle', data: null, error: null, attempt: null, recoveryMessage: null };
+}
+
+function normalizeTransactionsPayload(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.tickets)) {
+    return payload.tickets;
+  }
+
+  if (Array.isArray(payload?.data)) {
+    return payload.data;
+  }
+
+  return [];
+}
+
+function readPendingAttempt() {
+  try {
+    const stored = window.sessionStorage.getItem(PENDING_ATTEMPT_STORAGE_KEY);
+    if (!stored) {
+      return null;
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed.badgeNumber !== 'string' || typeof parsed.mealType !== 'string' || typeof parsed.startedAt !== 'number') {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingAttempt(attempt) {
+  try {
+    window.sessionStorage.setItem(PENDING_ATTEMPT_STORAGE_KEY, JSON.stringify(attempt));
+  } catch {
+    // ignore storage failures in the UI path
+  }
+}
+
+function clearPendingAttempt() {
+  try {
+    window.sessionStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+  } catch {
+    // ignore storage failures in the UI path
+  }
+}
+
+function findRecoveredTransaction(transactions, attempt) {
+  if (!attempt) {
+    return null;
+  }
+
+  const lowerBound = attempt.startedAt - (2 * 60 * 1000);
+
+  return transactions.find((transaction) => {
+    const consumedAt = new Date(transaction.consumed_at).getTime();
+    return transaction.badge_number === attempt.badgeNumber
+      && transaction.meal_type === attempt.mealType
+      && Number.isFinite(consumedAt)
+      && consumedAt >= lowerBound;
+  }) || null;
+}
 
 export default function VendorInterface() {
+  const [lookupMode, setLookupMode] = useState('badge');
   const [badgeNumber, setBadgeNumber] = useState('');
+  const [qrToken, setQrToken] = useState('');
   const [mealType, setMealType] = useState('lunch');
-  const [result, setResult] = useState(null);
-  const [validation, setValidation] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [validationState, setValidationState] = useState(buildInitialValidationState);
+  const [redeemState, setRedeemState] = useState(buildInitialRedeemState);
   const [transactions, setTransactions] = useState([]);
+  const [checkingOutcome, setCheckingOutcome] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const fetchTransactions = useCallback(async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
       const res = await client.get('/tickets/history', { params: { date: today } });
-      setTransactions(res.data || []);
+      const nextTransactions = normalizeTransactionsPayload(res.data);
+      setTransactions(nextTransactions);
+      return nextTransactions;
     } catch (err) {
       console.error(err);
+      return [];
     }
   }, []);
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
-  async function handleValidate(e) {
-    e.preventDefault();
-    if (!badgeNumber.trim()) return;
-    setLoading(true);
-    setValidation(null);
-    setResult(null);
+  useEffect(() => {
+    const pendingAttempt = readPendingAttempt();
+    if (!pendingAttempt) {
+      return;
+    }
+
+    setBadgeNumber(pendingAttempt.badgeNumber);
+    setMealType(pendingAttempt.mealType);
+    setRedeemState({
+      status: 'unknown',
+      data: null,
+      error: 'A previous redemption attempt still needs verification.',
+      attempt: pendingAttempt,
+      recoveryMessage: 'Check the latest transaction before retrying this worker.'
+    });
+  }, []);
+
+  useEffect(() => {
+    function handleOnline() {
+      setIsOnline(true);
+    }
+
+    function handleOffline() {
+      setIsOnline(false);
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const isValidating = validationState.status === 'processing';
+  const isRedeeming = redeemState.status === 'processing';
+  const isBusy = isValidating || isRedeeming || checkingOutcome;
+  const disableActions = isBusy || !isOnline;
+  const activeBadgeNumber = lookupMode === 'qr'
+    ? validationState.data?.employee?.badge_number || ''
+    : badgeNumber.trim();
+
+  async function runValidation({ mode = lookupMode, badgeInput = badgeNumber, qrInput = qrToken } = {}) {
+    const normalizedBadge = badgeInput.trim();
+    const normalizedQrToken = qrInput.trim();
+    const isBadgeLookup = mode === 'badge';
+
+    if (isBadgeLookup && !normalizedBadge) return;
+    if (!isBadgeLookup && !normalizedQrToken) return;
+
+    setValidationState({ status: 'processing', data: null, error: null });
+    setRedeemState(buildInitialRedeemState());
     try {
-      const res = await client.get(`/tickets/validate/${encodeURIComponent(badgeNumber.trim())}`, {
-        params: { meal_type: mealType }
-      });
-      setValidation(res.data);
+      const res = isBadgeLookup
+        ? await client.get(`/tickets/validate/${encodeURIComponent(normalizedBadge)}`, {
+          params: { meal_type: mealType },
+          timeout: REQUEST_TIMEOUT_MS
+        })
+        : await client.post('/tickets/validate-token', {
+          token: normalizedQrToken,
+          meal_type: mealType,
+          canteen_location: 'Main Canteen'
+        }, {
+          timeout: REQUEST_TIMEOUT_MS
+        });
+
+      setValidationState({ status: 'succeeded', data: res.data, error: null });
     } catch (err) {
-      setValidation({ error: err.response?.data?.error || 'Validation failed' });
-    } finally {
-      setLoading(false);
+      setValidationState({
+        status: 'failed',
+        data: null,
+        error: err.response?.data?.error || (isBadgeLookup
+          ? 'Validation failed. Check the badge number and try again.'
+          : 'QR validation failed. Scan again or switch to badge lookup.')
+      });
     }
   }
 
+
+  async function handleValidate(e) {
+    e.preventDefault();
+    await runValidation();
+  }
+
+  async function handleQrDetected(detectedToken) {
+    setQrToken(detectedToken);
+    setScannerOpen(false);
+    await runValidation({ mode: 'qr', qrInput: detectedToken });
+  }
   async function handleRedeem(e) {
     e.preventDefault();
-    if (!badgeNumber.trim()) return;
-    setLoading(true);
-    setResult(null);
+    const normalizedBadge = activeBadgeNumber;
+    if (!normalizedBadge) return;
+
+    const attempt = {
+      badgeNumber: normalizedBadge,
+      mealType,
+      startedAt: Date.now()
+    };
+
+    writePendingAttempt(attempt);
+    setRedeemState({ status: 'processing', data: null, error: null, attempt, recoveryMessage: null });
     try {
       const res = await client.post('/tickets/consume', {
-        badge_number: badgeNumber.trim(),
+        badge_number: normalizedBadge,
         meal_type: mealType,
         canteen_location: 'Main Canteen'
+      }, {
+        timeout: REQUEST_TIMEOUT_MS
       });
-      setResult({ success: true, data: res.data });
+      setRedeemState({ status: 'succeeded', data: res.data, error: null, attempt, recoveryMessage: null });
+      clearPendingAttempt();
       setBadgeNumber('');
-      setValidation(null);
-      fetchTransactions();
+      setQrToken('');
+      setValidationState(buildInitialValidationState());
+      await fetchTransactions();
     } catch (err) {
-      setResult({ success: false, error: err.response?.data?.error || 'Redemption failed' });
+      if (isOutcomeUnknownError(err)) {
+        setRedeemState({
+          status: 'unknown',
+          data: null,
+          error: 'The request timed out or the network dropped before the result came back.',
+          attempt,
+          recoveryMessage: 'Check the latest transaction before retrying this worker.'
+        });
+        return;
+      }
+
+      setRedeemState({
+        status: 'failed',
+        data: null,
+        error: err.response?.data?.error || 'Redemption failed',
+        attempt,
+        recoveryMessage: null
+      });
+      clearPendingAttempt();
+    }
+  }
+
+  async function handleCheckLatestTransaction() {
+    if (!redeemState.attempt) {
+      return;
+    }
+
+    setCheckingOutcome(true);
+    try {
+      const nextTransactions = await fetchTransactions();
+      const recovered = findRecoveredTransaction(nextTransactions, redeemState.attempt);
+
+      if (recovered) {
+        setRedeemState({
+          status: 'succeeded',
+          data: {
+            employee: {
+              name: recovered.employee_name,
+              employee_number: recovered.employee_number
+            },
+            record: recovered,
+            transaction: {
+              transaction_reference: recovered.id
+            },
+            remaining: null,
+            recovered: true
+          },
+          error: null,
+          attempt: redeemState.attempt,
+          recoveryMessage: 'Latest transaction history shows this meal was already recorded.'
+        });
+        clearPendingAttempt();
+      } else {
+        setRedeemState((current) => ({
+          ...current,
+          recoveryMessage: isOnline
+            ? 'No matching transaction was found yet. Do not retry immediately. Confirm with operations if the queue is moving.'
+            : 'Still offline. Reconnect before checking again or attempting another redemption.'
+        }));
+      }
     } finally {
-      setLoading(false);
+      setCheckingOutcome(false);
     }
   }
 
@@ -65,19 +297,96 @@ export default function VendorInterface() {
     <div className="page-container">
       <h1 className="page-title">Vendor Interface</h1>
 
+      <QrScannerPanel
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onDetected={handleQrDetected}
+      />
+
+      {!isOnline && (
+        <div className="card vendor-status-banner offline">
+          <strong>Offline:</strong> the network is down. Do not retry a worker until the connection returns and you check the latest transaction.
+        </div>
+      )}
+
+      {isOnline && redeemState.status === 'unknown' && (
+        <div className="card vendor-status-banner warning">
+          <strong>Recovery mode:</strong> this screen is holding a previous redemption attempt for verification. Check the latest transaction before serving or retrying.
+        </div>
+      )}
+
       <div className="card">
         <div className="vendor-redeem-box">
           <h2 style={{ marginBottom: '8px' }}>Validate and Redeem</h2>
           <p className="text-muted mb-3">Enter worker badge number and meal type</p>
           <form onSubmit={handleValidate}>
-            <input
-              className="form-control"
-              value={badgeNumber}
-              onChange={e => setBadgeNumber(e.target.value)}
-              placeholder="Enter badge number..."
-              style={{ maxWidth: '500px', width: '100%', fontSize: '1rem', marginBottom: '12px', display: 'block', margin: '0 auto 12px' }}
-            />
+            <div className="vendor-mode-row" role="group" aria-label="Lookup mode">
+              <button
+                type="button"
+                className={`btn ${lookupMode === 'badge' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => {
+                  setLookupMode('badge');
+                  setValidationState(buildInitialValidationState());
+                }}
+                disabled={isBusy}
+              >
+                Badge Lookup
+              </button>
+              <button
+                type="button"
+                className={`btn ${lookupMode === 'qr' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => {
+                  setLookupMode('qr');
+                  setValidationState(buildInitialValidationState());
+                }}
+                disabled={isBusy}
+              >
+                QR Token
+              </button>
+            </div>
+
+            {lookupMode === 'badge' ? (
+              <>
+                <label htmlFor="badge-number" className="sr-only">Badge Number</label>
+                <input
+                  id="badge-number"
+                  className="form-control"
+                  value={badgeNumber}
+                  onChange={e => setBadgeNumber(e.target.value)}
+                  placeholder="Enter badge number..."
+                  style={{ maxWidth: '500px', width: '100%', fontSize: '1rem', marginBottom: '12px', display: 'block', margin: '0 auto 12px' }}
+                />
+              </>
+            ) : (
+              <>
+                <div className="vendor-qr-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setScannerOpen(true)}
+                    disabled={disableActions}
+                  >
+                    Use Camera
+                  </button>
+                </div>
+                <label htmlFor="qr-token" className="sr-only">QR Token</label>
+                <textarea
+                  id="qr-token"
+                  className="form-control"
+                  value={qrToken}
+                  onChange={e => setQrToken(e.target.value)}
+                  placeholder="Scan or paste signed QR token..."
+                  rows={4}
+                  style={{ maxWidth: '500px', width: '100%', fontSize: '0.95rem', marginBottom: '12px', display: 'block', margin: '0 auto 12px' }}
+                />
+                <p className="text-muted" style={{ maxWidth: '500px', margin: '0 auto 12px' }}>
+                  Camera scan validates automatically when a signed QR token is detected. If the device camera is unstable, paste the token instead.
+                </p>
+              </>
+            )}
+            <label htmlFor="meal-type" className="sr-only">Meal Type</label>
             <select
+              id="meal-type"
               className="form-control"
               value={mealType}
               onChange={e => setMealType(e.target.value)}
@@ -90,50 +399,85 @@ export default function VendorInterface() {
             <button
               type="submit"
               className="btn btn-secondary"
-              disabled={loading || !badgeNumber.trim()}
+              disabled={disableActions || (lookupMode === 'badge' ? !badgeNumber.trim() : !qrToken.trim())}
               style={{ padding: '10px 32px', fontSize: '1rem', marginTop: '8px' }}
             >
-              {loading ? 'Validating...' : 'Validate'}
+              {isValidating ? 'Validating...' : 'Validate'}
             </button>
             <button
               type="button"
               className="btn btn-primary"
               onClick={handleRedeem}
-              disabled={loading || !badgeNumber.trim()}
+              disabled={disableActions || !activeBadgeNumber}
               style={{ padding: '10px 32px', fontSize: '1rem', marginTop: '8px', marginLeft: '10px' }}
             >
-              {loading ? 'Redeeming...' : 'Redeem'}
+              {isRedeeming ? 'Redeeming...' : 'Redeem'}
             </button>
           </form>
 
-          {validation && (
-            <div className={`vendor-result ${validation.error ? 'error' : validation.can_consume ? 'success' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
-              {validation.error ? (
-                <p>{validation.error}</p>
+          {validationState.status !== 'idle' && (
+            <div className={`vendor-result ${validationState.status === 'processing' ? 'info' : validationState.status === 'succeeded' && validationState.data?.can_consume ? 'success' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
+              {validationState.status === 'processing' ? (
+                <>
+                  <h3 style={{ color: '#0c5460', marginBottom: '8px' }}>Checking eligibility</h3>
+                  <p>Please wait for the backend to confirm this worker before serving.</p>
+                </>
+              ) : validationState.status === 'failed' ? (
+                <p>{validationState.error}</p>
               ) : (
                 <>
-                  <p><strong>Worker:</strong> {validation.employee?.name} ({validation.employee?.employee_number})</p>
-                  <p><strong>Meal Type:</strong> {validation.meal_type}</p>
-                  <p><strong>Status:</strong> {validation.can_consume ? 'Eligible' : 'Already consumed'}</p>
+                  <p><strong>Worker:</strong> {validationState.data?.employee?.name} ({validationState.data?.employee?.employee_number})</p>
+                  {lookupMode === 'qr' && <p><strong>Lookup source:</strong> Signed QR token</p>}
+                  <p><strong>Meal Type:</strong> {validationState.data?.meal_type}</p>
+                  <p><strong>Status:</strong> {validationState.data?.can_consume ? 'Eligible' : 'Already consumed'}</p>
+                  <p><strong>Remaining balance:</strong> {validationState.data?.remaining ?? 0}</p>
+                  {!validationState.data?.can_consume && validationState.data?.message && (
+                    <p><strong>Next step:</strong> {validationState.data.message}</p>
+                  )}
                 </>
               )}
             </div>
           )}
 
-          {result && (
-            <div className={`vendor-result ${result.success ? 'success' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
-              {result.success ? (
+          {redeemState.status !== 'idle' && (
+            <div className={`vendor-result ${redeemState.status === 'processing' ? 'info' : redeemState.status === 'succeeded' ? 'success' : redeemState.status === 'unknown' ? 'warning' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
+              {redeemState.status === 'processing' ? (
                 <>
-                  <h3 style={{ color: '#155724', marginBottom: '8px' }}>Meal Recorded Successfully</h3>
-                  <p><strong>Worker:</strong> {result.data.employee?.name} ({result.data.employee?.employee_number})</p>
-                  <p><strong>Department:</strong> {result.data.employee?.department}</p>
-                  <p><strong>Meal Type:</strong> {result.data.record?.meal_type}</p>
-                  <p><strong>Record ID:</strong> #{result.data.record?.id}</p>
+                  <h3 style={{ color: '#0c5460', marginBottom: '8px' }}>Processing redemption</h3>
+                  <p>Do not resubmit while the backend is processing this meal.</p>
+                </>
+              ) : redeemState.status === 'succeeded' ? (
+                <>
+                  <h3 style={{ color: '#155724', marginBottom: '8px' }}>
+                    {redeemState.data?.recovered ? 'Meal Found in Recent History' : 'Meal Recorded Successfully'}
+                  </h3>
+                  <p><strong>Worker:</strong> {redeemState.data?.employee?.name} ({redeemState.data?.employee?.employee_number})</p>
+                  <p><strong>Department:</strong> {redeemState.data?.employee?.department || '-'}</p>
+                  <p><strong>Meal Type:</strong> {redeemState.data?.record?.meal_type}</p>
+                  <p><strong>Transaction reference:</strong> #{redeemState.data?.transaction?.transaction_reference || redeemState.data?.record?.id}</p>
+                  <p><strong>Remaining balance:</strong> {redeemState.data?.remaining ?? 'Unavailable from recovery lookup'}</p>
+                  {redeemState.recoveryMessage && <p><strong>Status note:</strong> {redeemState.recoveryMessage}</p>}
+                </>
+              ) : redeemState.status === 'unknown' ? (
+                <>
+                  <h3 style={{ color: '#856404', marginBottom: '8px' }}>Transaction status is unknown</h3>
+                  <p>{redeemState.error}</p>
+                  <p>{redeemState.recoveryMessage}</p>
+                  <div className="vendor-action-row">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleCheckLatestTransaction}
+                      disabled={checkingOutcome || !isOnline}
+                    >
+                      {checkingOutcome ? 'Checking latest...' : 'Check latest transaction'}
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
                   <h3 style={{ color: '#721c24', marginBottom: '8px' }}>Redemption Failed</h3>
-                  <p>{result.error}</p>
+                  <p>{redeemState.error}</p>
                 </>
               )}
             </div>

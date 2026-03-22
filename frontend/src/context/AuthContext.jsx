@@ -1,30 +1,55 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import client from '../api/client';
+import client, { AUTH_UNAUTHORIZED_EVENT, clearSessionState, ensureCsrfToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+    let cancelled = false;
+
+    async function bootstrapAuth() {
+      try {
+        await ensureCsrfToken();
+        const res = await client.get('/auth/me');
+        if (!cancelled) {
+          setUser(res.data?.user || null);
+        }
+      } catch (err) {
+        if (!cancelled && err.response?.status !== 401) {
+          console.error('Auth bootstrap failed:', err);
+        }
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
-    setLoading(false);
+
+    function handleUnauthorized() {
+      setUser(null);
+      setLoading(false);
+    }
+
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    bootstrapAuth();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
   }, []);
 
   async function login(username, password) {
     const res = await client.post('/auth/login', { username, password });
-    const { token: newToken, user: newUser } = res.data;
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
-    setToken(newToken);
+    const newUser = res.data?.user || null;
     setUser(newUser);
+    await ensureCsrfToken();
     return newUser;
   }
 
@@ -34,14 +59,12 @@ export function AuthProvider({ children }) {
     } catch (e) {
       // ignore
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setToken(null);
+    clearSessionState();
     setUser(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Employee } = require('../database');
+const { ROLE, canonicalizeRole } = require('../utils/roles');
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_STATUSES = ['active', 'suspended', 'deactivated'];
@@ -38,25 +39,26 @@ function normalizeLifecycle({ status, active }) {
 
 function applyRoleScope(baseFilter, user) {
   const scoped = { ...baseFilter };
+  const role = canonicalizeRole(user && user.role);
 
-  if (!user || !user.role) {
+  if (!user || !role) {
     throw makeError(401, 'AUTH_REQUIRED', 'Authentication required');
   }
 
-  if (user.role === 'admin') {
+  if (role === ROLE.ADMIN) {
     return scoped;
   }
 
-  if (user.role === 'viewer' || user.role === 'hr') {
+  if (role === ROLE.VIEWER || role === ROLE.HR) {
     return scoped;
   }
 
-  if (user.role === 'staff' || user.role === 'vendor') {
+  if (role === ROLE.VENDOR) {
     scoped.active = true;
     return scoped;
   }
 
-  if (user.role === 'employee') {
+  if (role === ROLE.EMPLOYEE) {
     if (!user.employee_id || !mongoose.Types.ObjectId.isValid(user.employee_id)) {
       throw makeError(403, 'FORBIDDEN', 'Employee account is not linked to a worker profile');
     }
@@ -165,7 +167,9 @@ async function getEmployeeById(id, user) {
     throw makeError(404, 'NOT_FOUND', 'Employee not found');
   }
 
-  if (user.role === 'employee') {
+  const role = canonicalizeRole(user.role);
+
+  if (role === ROLE.EMPLOYEE) {
     if (!user.employee_id || String(user.employee_id) !== String(id)) {
       throw makeError(403, 'FORBIDDEN', 'Employees can only access their own record');
     }
@@ -179,8 +183,8 @@ async function getEmployeeById(id, user) {
     throw makeError(404, 'NOT_FOUND', 'Employee not found');
   }
 
-  if (user.role === 'staff' && employee.active === false) {
-    throw makeError(403, 'FORBIDDEN', 'Staff cannot access inactive employee records');
+  if (role === ROLE.VENDOR && employee.active === false) {
+    throw makeError(403, 'FORBIDDEN', 'Vendor cannot access inactive employee records');
   }
 
   return employee;

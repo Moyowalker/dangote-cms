@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isVendorRole } from '../auth/roles';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -9,6 +11,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -16,8 +19,12 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(username, password);
-      if (user.role === 'staff') {
-        navigate('/vendor');
+      const nextPath = typeof location.state?.from === 'string' ? location.state.from : null;
+
+      if (nextPath) {
+        navigate(nextPath, { replace: true });
+      } else if (user && isVendorRole(user.role) && user.role !== 'admin') {
+        navigate('/vendor', { replace: true });
       } else {
         navigate('/dashboard');
       }
@@ -38,8 +45,9 @@ export default function Login() {
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Username</label>
+            <label htmlFor="username">Username</label>
             <input
+              id="username"
               className="form-control"
               type="text"
               value={username}
@@ -49,8 +57,9 @@ export default function Login() {
             />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <label htmlFor="password">Password</label>
             <input
+              id="password"
               className="form-control"
               type="password"
               value={password}

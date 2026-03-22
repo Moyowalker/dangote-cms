@@ -4,7 +4,7 @@ const { Employee, MealRecord } = require('../database');
 const { requireReportViewer } = require('../middleware/auth');
 const { sendError } = require('../utils/apiResponse');
 const { getPagination, paginateArray } = require('../utils/pagination');
-const { buildDailyReport } = require('../services/reportService');
+const { buildDailyReport, buildFailureReport } = require('../services/reportService');
 
 const router = express.Router();
 
@@ -83,6 +83,32 @@ router.get('/department', requireReportViewer, async (req, res) => {
   } catch (err) {
     console.error(err);
     sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
+  }
+});
+
+router.get('/failures', requireReportViewer, async (req, res) => {
+  try {
+    const report = await buildFailureReport(req.query);
+    const selectedDate = report.date || null;
+    const summary = report.summary || [];
+    const details = report.details || [];
+
+    const { hasPagination, page, limit } = getPagination(req.query);
+    if (!hasPagination) {
+      return res.json({ date: selectedDate || null, summary, details, total: details.length });
+    }
+
+    const paginated = paginateArray(details, page, limit);
+    return res.json({
+      date: selectedDate || null,
+      summary,
+      details: paginated.data,
+      total: details.length,
+      pagination: paginated.pagination
+    });
+  } catch (err) {
+    console.error(err);
+    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
 
