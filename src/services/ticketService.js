@@ -23,6 +23,12 @@ function normalizeMealType(mealType) {
 
 function normalizeConsumePayload(payload) {
   const { badge_number, meal_type, canteen_location, notes } = payload;
+  const prohibitedClientFields = ['allowed', 'consumed', 'remaining', 'can_consume', 'entitlement', 'transaction_reference'];
+
+  const suppliedProhibitedField = prohibitedClientFields.find((field) => Object.prototype.hasOwnProperty.call(payload, field));
+  if (suppliedProhibitedField) {
+    throw makeError(`client field '${suppliedProhibitedField}' is not accepted`, 400, 'VALIDATION_ERROR');
+  }
 
   if (typeof badge_number !== 'string' || !badge_number.trim()) {
     throw makeError('badge_number and meal_type are required', 400, 'VALIDATION_ERROR');

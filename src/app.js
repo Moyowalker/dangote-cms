@@ -6,16 +6,19 @@ const rateLimit = require('express-rate-limit');
 const { doubleCsrf } = require('csrf-csrf');
 const path = require('path');
 const mongoose = require('mongoose');
-const { initializeDatabase, Employee, MealRecord, MealPlan } = require('./database');
+const { randomUUID } = require('crypto');
+const { initializeDatabase, Employee, MealRecord, MealPlan, AuditLog } = require('./database');
 
 const isTest = process.env.NODE_ENV === 'test';
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Fail fast in production when SESSION_SECRET is not explicitly configured
-if (isProduction && !process.env.SESSION_SECRET) {
-  console.error('FATAL: SESSION_SECRET environment variable is required in production');
+// Fail fast outside tests when SESSION_SECRET is not explicitly configured.
+if (!isTest && !process.env.SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET environment variable is required');
   process.exit(1);
 }
+
+const sessionSecret = isTest ? 'test-session-secret' : process.env.SESSION_SECRET;
 
 const authRoutes = require('./routes/auth');
 const employeeRoutes = require('./routes/employees');
@@ -24,9 +27,76 @@ const entitlementRoutes = require('./routes/entitlements');
 const ticketRoutes = require('./routes/tickets');
 const reportRoutes = require('./routes/reports');
 const reconciliationRoutes = require('./routes/reconciliation');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, requireReportViewer } = require('./middleware/auth');
 
 const app = express();
+
+function getAllowedOrigins() {
+  const configured = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (configured.length > 0) {
+    return configured;
+  }
+
+  return isProduction ? [] : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+}
+
+const allowedOrigins = getAllowedOrigins();
+
+app.use((req, res, next) => {
+  const requestId = typeof req.headers['x-request-id'] === 'string' && req.headers['x-request-id'].trim()
+    ? req.headers['x-request-id'].trim()
+    : randomUUID();
+
+  req.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    const durationMs = Date.now() - startedAt;
+    console.info(JSON.stringify({
+      level: 'info',
+      request_id: requestId,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      duration_ms: durationMs
+    }));
+  });
+
+  next();
+});
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
+
+  // Baseline HTTP hardening headers without changing page/script behavior.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+
+  if (isProduction) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -61,7 +131,7 @@ if (isProduction) {
 }
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'dangote-cms-secret-dev',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   // Use MongoDB-backed session store in non-test environments
@@ -78,7 +148,7 @@ app.use(session({
 }));
 
 const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
-  getSecret: () => process.env.SESSION_SECRET || 'dangote-cms-secret-dev',
+  getSecret: () => sessionSecret,
   getSessionIdentifier: (req) => req.sessionID || req.ip || 'anonymous',
   cookieName: 'csrf-token',
   cookieOptions: {
@@ -182,7 +252,53 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
     console.error('Dashboard stats error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
-  res.redirect('/index.html');
+});
+
+app.get('/api/dashboard/indicators', requireReportViewer, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const [todayRecords, consumeAudits] = await Promise.all([
+      MealRecord.find({ consumption_date: today }),
+      AuditLog.find({ action: 'ticket.consume' })
+    ]);
+
+    const failedAttemptsToday = consumeAudits.filter((entry) => {
+      const createdAt = entry.created_at instanceof Date
+        ? entry.created_at.toISOString().split('T')[0]
+        : String(entry.created_at || '').split('T')[0];
+      return entry.outcome === 'failure' && createdAt === today;
+    }).length;
+
+    const duplicateWindowBlocksToday = consumeAudits.filter((entry) => {
+      const createdAt = entry.created_at instanceof Date
+        ? entry.created_at.toISOString().split('T')[0]
+        : String(entry.created_at || '').split('T')[0];
+      return entry.outcome === 'failure'
+        && createdAt === today
+        && String(entry.reason || '').toLowerCase().includes('duplicate');
+    }).length;
+
+    const redemptionsByLocation = todayRecords.reduce((acc, record) => {
+      const key = record.canteen_location || 'Unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    res.json({
+      date: today,
+      risk_indicators: {
+        failed_attempts_today: failedAttemptsToday,
+        duplicate_window_blocks_today: duplicateWindowBlocksToday
+      },
+      operational_indicators: {
+        redemptions_today: todayRecords.length,
+        redemptions_by_location: redemptionsByLocation
+      }
+    });
+  } catch (err) {
+    console.error('Dashboard indicators error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = app;

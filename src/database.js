@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['admin', 'staff', 'employee'], default: 'employee' },
+    role: { type: String, enum: ['admin', 'vendor', 'viewer', 'hr', 'staff', 'employee'], default: 'viewer' },
     employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null }
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
@@ -35,6 +35,7 @@ const mealPlanSchema = new mongoose.Schema(
 
 const employeeSchema = new mongoose.Schema(
   {
+    worker_identifier: { type: String, required: true, unique: true },
     employee_number: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     department: { type: String, required: true },
@@ -49,6 +50,18 @@ const employeeSchema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
 
+employeeSchema.index({ employee_number: 1 }, { unique: true });
+employeeSchema.index({ worker_identifier: 1 }, { unique: true });
+employeeSchema.index({ badge_number: 1 }, { unique: true });
+employeeSchema.index({ created_at: -1 });
+
+employeeSchema.pre('validate', function syncWorkerIdentifier(next) {
+  if (!this.worker_identifier && this.employee_number) {
+    this.worker_identifier = this.employee_number;
+  }
+  next();
+});
+
 const workerCategorySchema = new mongoose.Schema(
   {
     code: { type: String, required: true, unique: true },
@@ -58,6 +71,80 @@ const workerCategorySchema = new mongoose.Schema(
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
+
+const vendorSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    canteen_location: { type: String, required: true },
+    active: { type: Boolean, default: true }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+vendorSchema.index({ code: 1 }, { unique: true });
+vendorSchema.index({ canteen_location: 1 });
+
+const vendorRestrictionSchema = new mongoose.Schema(
+  {
+    vendor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
+    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', required: true },
+    meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], required: true },
+    active: { type: Boolean, default: true }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+vendorRestrictionSchema.index({ vendor_id: 1, worker_category_id: 1, meal_type: 1 }, { unique: true });
+
+const transactionSchema = new mongoose.Schema(
+  {
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    vendor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', default: null },
+    meal_record_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MealRecord', default: null },
+    transaction_reference: { type: String, required: true, unique: true },
+    transaction_date: { type: String, required: true },
+    meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], required: true },
+    status: { type: String, enum: ['success', 'failed', 'reversed'], default: 'success' },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+transactionSchema.index({ transaction_reference: 1 }, { unique: true });
+transactionSchema.index({ vendor_id: 1, transaction_date: 1 });
+transactionSchema.index({ employee_id: 1, transaction_date: 1 });
+
+const reconciliationRecordSchema = new mongoose.Schema(
+  {
+    vendor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', default: null },
+    reconciliation_date: { type: String, required: true },
+    expected_count: { type: Number, default: 0 },
+    actual_count: { type: Number, default: 0 },
+    discrepancy_count: { type: Number, default: 0 },
+    status: { type: String, enum: ['matched', 'mismatch'], default: 'matched' },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+reconciliationRecordSchema.index({ vendor_id: 1, reconciliation_date: 1 }, { unique: true });
+
+const qrTokenMetadataSchema = new mongoose.Schema(
+  {
+    token_jti: { type: String, required: true, unique: true },
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    expires_at: { type: Date, required: true },
+    issued_at: { type: Date, default: Date.now },
+    last_used_at: { type: Date, default: null },
+    revoked: { type: Boolean, default: false }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+qrTokenMetadataSchema.index({ token_jti: 1 }, { unique: true });
+qrTokenMetadataSchema.index({ employee_id: 1, expires_at: -1 });
+qrTokenMetadataSchema.index({ expires_at: 1 });
 
 const entitlementPolicySchema = new mongoose.Schema(
   {
@@ -101,6 +188,7 @@ const mealRecordSchema = new mongoose.Schema(
   {
     employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
     meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], required: true },
+    status: { type: String, enum: ['used', 'voided'], default: 'used' },
     // Stored as YYYY-MM-DD string to avoid timezone conversion complexity at the API boundary
     consumption_date: { type: String, required: true },
     consumed_at: { type: Date, default: Date.now },
@@ -154,11 +242,17 @@ auditLogSchema.pre('deleteMany', preventAuditMutation);
 const User = mongoose.model('User', userSchema);
 const MealPlan = mongoose.model('MealPlan', mealPlanSchema);
 const Employee = mongoose.model('Employee', employeeSchema);
+const Worker = mongoose.model('Worker', employeeSchema, 'employees');
 const WorkerCategory = mongoose.model('WorkerCategory', workerCategorySchema);
+const Vendor = mongoose.model('Vendor', vendorSchema);
+const VendorRestriction = mongoose.model('VendorRestriction', vendorRestrictionSchema);
 const EntitlementPolicy = mongoose.model('EntitlementPolicy', entitlementPolicySchema);
 const WorkerEntitlementBalance = mongoose.model('WorkerEntitlementBalance', workerEntitlementBalanceSchema);
 const MenuItem = mongoose.model('MenuItem', menuItemSchema);
 const MealRecord = mongoose.model('MealRecord', mealRecordSchema);
+const Transaction = mongoose.model('Transaction', transactionSchema);
+const ReconciliationRecord = mongoose.model('ReconciliationRecord', reconciliationRecordSchema);
+const QRTokenMetadata = mongoose.model('QRTokenMetadata', qrTokenMetadataSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 
 // ── Connection helpers ────────────────────────────────────────────────────────
@@ -166,10 +260,11 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 async function initializeDatabase(uri) {
   await mongoose.connect(uri);
 
-  // Seed default admin user on first run
+  // Optional bootstrap user for non-production provisioning.
   const adminExists = await User.findOne({ username: 'admin' });
-  if (!adminExists) {
-    const hashedPassword = await bcrypt.hash('admin123', 10);
+  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  if (!adminExists && bootstrapPassword) {
+    const hashedPassword = await bcrypt.hash(bootstrapPassword, 10);
     await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
   }
 }
@@ -184,10 +279,16 @@ module.exports = {
   User,
   MealPlan,
   Employee,
+  Worker,
   WorkerCategory,
+  Vendor,
+  VendorRestriction,
   EntitlementPolicy,
   WorkerEntitlementBalance,
   MenuItem,
   MealRecord,
+  Transaction,
+  ReconciliationRecord,
+  QRTokenMetadata,
   AuditLog
 };

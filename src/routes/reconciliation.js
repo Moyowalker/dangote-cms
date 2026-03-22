@@ -1,69 +1,16 @@
 const express = require('express');
-const { MealRecord, AuditLog } = require('../database');
-const { requireAdmin } = require('../middleware/auth');
+const { requireReportViewer } = require('../middleware/auth');
 const { sendError } = require('../utils/apiResponse');
 const { getPagination, paginateArray } = require('../utils/pagination');
+const { buildVendorDailyReconciliation } = require('../services/reconciliationService');
 
 const router = express.Router();
 
-function validateDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function indicatorForFailureRate(failures, total) {
-  if (failures === 0) return 'none';
-  const denominator = total > 0 ? total : 1;
-  const rate = failures / denominator;
-  if (rate >= 0.5 || failures >= 5) return 'high';
-  if (rate >= 0.2 || failures >= 2) return 'medium';
-  return 'low';
-}
-
-router.get('/vendor-daily', requireAdmin, async (req, res) => {
+router.get('/vendor-daily', requireReportViewer, async (req, res) => {
   try {
     const date = req.query.date || new Date().toISOString().split('T')[0];
-    if (!validateDate(date)) {
-      return sendError(res, 400, 'date must be in YYYY-MM-DD format', 'VALIDATION_ERROR');
-    }
-
-    const records = await MealRecord.find({ consumption_date: date });
-    const failures = await AuditLog.find({ action: 'ticket.consume', outcome: 'failure' });
-
-    const successByVendor = new Map();
-    const failureByVendor = new Map();
-
-    for (const record of records) {
-      const vendorId = record.staff_id ? String(record.staff_id) : 'unknown';
-      const key = `${vendorId}::${record.canteen_location || 'Main Canteen'}`;
-      successByVendor.set(key, (successByVendor.get(key) || 0) + 1);
-    }
-
-    for (const log of failures) {
-      const logDate = log.metadata && log.metadata.date ? String(log.metadata.date) : null;
-      if (logDate !== date) continue;
-      const vendorId = log.actor_user_id ? String(log.actor_user_id) : 'unknown';
-      const key = `${vendorId}::${(log.metadata && log.metadata.canteen_location) || 'Main Canteen'}`;
-      failureByVendor.set(key, (failureByVendor.get(key) || 0) + 1);
-    }
-
-    const keys = new Set([...successByVendor.keys(), ...failureByVendor.keys()]);
-    const summary = [];
-
-    for (const key of keys) {
-      const [vendor_user_id, canteen_location] = key.split('::');
-      const total_consumptions = successByVendor.get(key) || 0;
-      const failed_attempts = failureByVendor.get(key) || 0;
-      summary.push({
-        vendor_user_id,
-        canteen_location,
-        date,
-        total_consumptions,
-        failed_attempts,
-        discrepancy_indicator: indicatorForFailureRate(failed_attempts, total_consumptions)
-      });
-    }
-
-    summary.sort((a, b) => b.failed_attempts - a.failed_attempts || b.total_consumptions - a.total_consumptions);
+    const reconciliation = await buildVendorDailyReconciliation(date);
+    const summary = reconciliation.summary || [];
 
     const { hasPagination, page, limit } = getPagination(req.query);
     if (!hasPagination) {
@@ -79,7 +26,7 @@ router.get('/vendor-daily', requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error('Reconciliation vendor-daily error:', err);
-    sendError(res, 500, 'Internal server error', 'INTERNAL_ERROR');
+    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
 

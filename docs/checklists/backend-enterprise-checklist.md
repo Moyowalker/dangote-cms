@@ -2,30 +2,30 @@
 
 Use this checklist as the delivery gate for all backend work.
 
-Status update: Completed items checked as part of the MongoDB canonicalization and cleanup pass on 2026-03-21, plus entitlement admin API/assignment, ticket-flow audit logging with tests, validation/error-envelope standardization, employee-domain service-layer extraction, ticket-domain service extraction for validation/consume rules, role-based employee filtering, worker lifecycle modeling, tamper-evident append-only audit chain, reconciliation aggregation endpoints/tests, and health/readiness operational endpoints on 2026-03-21.
+Status update: Completed items checked as part of the MongoDB canonicalization and cleanup pass on 2026-03-21, plus entitlement admin API/assignment, ticket-flow audit logging with tests, validation/error-envelope standardization, employee-domain service-layer extraction, ticket-domain service extraction for validation/consume rules, reporting/reconciliation service extraction, role-based employee filtering, worker lifecycle modeling, tamper-evident append-only audit chain, reconciliation aggregation endpoints/tests, reporting filters for date range/vendor/worker category/status, health/readiness operational endpoints, explicit security headers/CORS policy, structured logging with request IDs, signed QR token issue/verification flow with persisted metadata, expanded core domain models (Vendor, VendorRestriction, Transaction, ReconciliationRecord, QRTokenMetadata), vendor restriction enforcement and duplicate-window redemption checks in validation flow, unit tests for service-layer entitlement logic, GitHub Actions CI test pipeline configuration on 2026-03-21, and full readiness closure (RBAC matrix, migration/seed scripts, worker_identifier index migration support, dashboard risk indicators, trust-boundary enforcement, secret hardening, error monitoring strategy, and deployment promotion workflow) on 2026-03-22.
 
 ## 1. Architecture and Structure
 
 - [x] Single canonical backend is defined and documented (MongoDB stack only)
 - [x] Legacy/duplicate backend folders are identified and tagged for removal
-- [ ] Backend is organized by domain boundaries (auth, worker, vendor, entitlement, transaction, reporting, audit, reconciliation)
-- [ ] Business logic is in service layer, not route handlers
+- [x] Backend is organized by domain boundaries (auth, worker, vendor, entitlement, transaction, reporting, audit, reconciliation)
+- [x] Business logic is in service layer, not route handlers
 - [x] Shared middleware is centralized (auth, RBAC, validation, error handling, rate limiting)
 - [x] Config is environment-driven and centralized
 
 ## 2. Data Model (MongoDB)
 
-- [ ] Core collections exist: User, Worker, WorkerCategory, EntitlementPolicy, WorkerEntitlementBalance, Vendor, VendorRestriction, Transaction, AuditLog, ReconciliationRecord, QRTokenMetadata
+- [x] Core collections exist: User, Worker, WorkerCategory, EntitlementPolicy, WorkerEntitlementBalance, Vendor, VendorRestriction, Transaction, AuditLog, ReconciliationRecord, QRTokenMetadata
 - [x] Worker has unique worker_identifier independent of Mongo _id
 - [x] Worker lifecycle states are modeled: active, suspended, deactivated
-- [ ] Indexes exist for all high-cardinality lookup paths (worker_identifier, vendor_id/date, transaction reference, audit timestamp)
+- [x] Indexes exist for all high-cardinality lookup paths (worker_identifier, vendor_id/date, transaction reference, audit timestamp)
 - [x] Unique and compound indexes are defined for duplicate prevention and integrity constraints
-- [ ] Migration/seed scripts exist for local and non-production bootstrapping
+- [x] Migration/seed scripts exist for local and non-production bootstrapping
 
 ## 3. Auth and RBAC
 
 - [x] Strong authentication implemented (session or JWT strategy is consistent and documented)
-- [ ] RBAC roles defined: Admin, Vendor, Viewer (HR optional)
+- [x] RBAC roles defined: Admin, Vendor, Viewer (HR optional)
 - [x] Route-level authorization enforced for all protected endpoints
 - [x] Role-based data filtering enforced server-side
 - [x] Sensitive endpoints have stricter rate limits
@@ -34,23 +34,23 @@ Status update: Completed items checked as part of the MongoDB canonicalization a
 
 - [x] Input validation applied on all write endpoints
 - [x] Validation errors are explicit, consistent, and non-leaky
-- [ ] QR payload strategy is signed and verified server-side
-- [ ] Frontend is never trusted for balance/eligibility decisions
-- [ ] Security headers and CORS policy are explicitly configured
-- [ ] Secret management avoids hardcoded credentials
+- [x] QR payload strategy is signed and verified server-side
+- [x] Frontend is never trusted for balance/eligibility decisions
+- [x] Security headers and CORS policy are explicitly configured
+- [x] Secret management avoids hardcoded credentials
 
 ## 5. Worker-Centric Entitlement Flow
 
-- [ ] Vendor can validate by QR token or manual worker_identifier
-- [ ] Validation checks include worker existence, active state, suspension, entitlement sufficiency, vendor restrictions, and duplicate window checks
-- [ ] Deduction and transaction write happen atomically
-- [ ] Duplicate and near-simultaneous redemption attempts are blocked
+- [x] Vendor can validate by QR token or manual worker_identifier
+- [x] Validation checks include worker existence, active state, suspension, entitlement sufficiency, vendor restrictions, and duplicate window checks
+- [x] Deduction and transaction write happen atomically
+- [x] Duplicate and near-simultaneous redemption attempts are blocked
 - [x] Success and failure outcomes are both audit logged
 
 ## 6. Reporting, Audit, and Reconciliation
 
-- [ ] Reports support date range, vendor, worker category, and status filters
-- [ ] Dashboard endpoints expose operational and fraud-risk indicators
+- [x] Reports support date range, vendor, worker category, and status filters
+- [x] Dashboard endpoints expose operational and fraud-risk indicators
 - [x] Audit log captures actor, action, entity, timestamp, outcome, and metadata
 - [x] Audit records are append-only and tamper-evident strategy is defined
 - [x] Reconciliation endpoints aggregate by vendor and date with discrepancy indicators
@@ -64,19 +64,19 @@ Status update: Completed items checked as part of the MongoDB canonicalization a
 
 ## 8. Testing and Quality Gates
 
-- [ ] Unit tests for services (validation, deduction, duplicate protection, restriction checks)
+- [x] Unit tests for services (validation, deduction, duplicate protection, restriction checks)
 - [x] Integration tests for critical flows (QR/manual validation, deduction, suspension rejection, insufficient balance)
 - [x] RBAC tests for all protected routes
 - [x] Reconciliation and reporting aggregation tests
 - [x] Audit creation tests for success and failure paths
-- [ ] CI test pipeline passes before merge
+- [x] CI test pipeline passes before merge
 
 ## 9. Observability and Operations
 
-- [ ] Structured logging with correlation/request IDs
+- [x] Structured logging with correlation/request IDs
 - [x] Health, readiness, and database connectivity endpoints are available
-- [ ] Error monitoring strategy is defined
-- [ ] Deployment config supports environment promotion
+- [x] Error monitoring strategy is defined
+- [x] Deployment config supports environment promotion
 
 ## 10. Cleanup and Decommissioning (MongoDB Direction)
 

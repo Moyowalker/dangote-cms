@@ -8,6 +8,13 @@ Web-based canteen management platform for digitized meal operations.
 - Frontend: React + Vite + React Router + Axios
 - Auth model: Session-based auth with role checks
 
+## RBAC Role Matrix
+
+- `admin`: full CRUD, policy management, reporting, reconciliation, and operational endpoints
+- `vendor`: ticket validation and consumption workflows
+- `viewer`: read-only reporting, reconciliation, and dashboard indicators
+- `hr` (optional): read-only reporting access (same as viewer)
+
 Legacy SQLite backend has been removed. The repository now has a single backend direction.
 
 ## Project Structure
@@ -50,6 +57,11 @@ npm run dev
 - `SESSION_SECRET` - required secret for session signing
 - `MONGO_URI` - MongoDB connection string
 - `PORT` - backend port (default `3001`)
+- `CORS_ORIGINS` - optional comma-separated allowlist of frontend origins (example: `http://localhost:5173,https://cms.example.com`)
+- `QR_TOKEN_SECRET` - HMAC secret used to sign and verify QR validation tokens
+- `DUPLICATE_WINDOW_MINUTES` - optional redemption window guard (default `2`) to block near-simultaneous duplicate attempts
+- `ADMIN_BOOTSTRAP_PASSWORD` - optional initial admin bootstrap password used only when no admin exists
+- `SEED_DEFAULT_PASSWORD` - required by `npm run seed:nonprod` to create non-prod demo users
 
 ## Current API Surface (Mongo Backend)
 
@@ -81,7 +93,9 @@ npm run dev
 ### Ticket/Consumption Flow
 
 - `GET /api/tickets/validate/:badge_number`
+- `POST /api/tickets/validate-token`
 - `POST /api/tickets/consume`
+- `POST /api/tickets/qr-token`
 - `GET /api/tickets/history`
 
 ### Reporting and Dashboard
@@ -91,6 +105,7 @@ npm run dev
 - `GET /api/reports/employee/:id`
 - `GET /api/reconciliation/vendor-daily`
 - `GET /api/dashboard/stats`
+- `GET /api/dashboard/indicators`
 
 ### Operations
 
@@ -171,6 +186,33 @@ Response:
 }
 ```
 
+### Example: QR Token Issue and Validate
+
+Issue request:
+
+```http
+POST /api/tickets/qr-token
+Content-Type: application/json
+
+{
+	"badge_number": "B-1001",
+	"ttl_seconds": 600
+}
+```
+
+Validate request:
+
+```http
+POST /api/tickets/validate-token
+Content-Type: application/json
+
+{
+	"token": "<signed-token>",
+	"meal_type": "lunch",
+	"canteen_location": "Main Canteen"
+}
+```
+
 ### Example: Daily Report Details (Paginated)
 
 Request:
@@ -245,6 +287,26 @@ Run backend tests from repository root:
 ```bash
 npm test
 ```
+
+## Migrations and Seeding
+
+Initialize worker identifiers for legacy records:
+
+```bash
+npm run migrate:worker-identifier
+```
+
+Seed non-production bootstrap data (requires `SEED_DEFAULT_PASSWORD`):
+
+```bash
+npm run seed:nonprod
+```
+
+## Security Notes
+
+- The backend is the source of truth for entitlement balances and eligibility checks.
+- Client payloads are treated as untrusted hints; eligibility and balance are re-computed server-side before every consume write.
+- `SESSION_SECRET` is required outside tests; startup fails fast when it is missing.
 
 ## Delivery Guidance
 

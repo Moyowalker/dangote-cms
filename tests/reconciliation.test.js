@@ -4,7 +4,7 @@ jest.mock('../src/database');
 
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, MealRecord, AuditLog } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord, AuditLog, WorkerCategory } = require('../src/database');
 
 let agent;
 
@@ -18,6 +18,7 @@ beforeEach(async () => {
   await AuditLog.deleteMany({});
   await MealRecord.deleteMany({});
   await Employee.deleteMany({});
+  await WorkerCategory.deleteMany({});
 });
 
 afterAll(async () => {
@@ -113,5 +114,60 @@ describe('Reconciliation and Reporting Aggregation', () => {
     expect(res.body.pagination).toBeDefined();
     expect(res.body.pagination.page).toBe(1);
     expect(res.body.pagination.limit).toBe(1);
+  });
+
+  test('GET /api/reports/daily supports date range, vendor, status, and worker category filters', async () => {
+    const categoryA = await WorkerCategory.create({ code: 'CAT-A', name: 'Category A' });
+    const categoryB = await WorkerCategory.create({ code: 'CAT-B', name: 'Category B' });
+
+    const empA = await Employee.create({
+      employee_number: 'REP100',
+      name: 'Filter User A',
+      department: 'Ops',
+      badge_number: 'FILTER-1',
+      worker_category_id: categoryA._id
+    });
+
+    const empB = await Employee.create({
+      employee_number: 'REP101',
+      name: 'Filter User B',
+      department: 'Ops',
+      badge_number: 'FILTER-2',
+      worker_category_id: categoryB._id
+    });
+
+    await MealRecord.create({
+      employee_id: empA._id,
+      meal_type: 'lunch',
+      status: 'used',
+      consumption_date: '2026-03-20',
+      canteen_location: 'Main Canteen'
+    });
+
+    await MealRecord.create({
+      employee_id: empB._id,
+      meal_type: 'lunch',
+      status: 'used',
+      consumption_date: '2026-03-20',
+      canteen_location: 'Annex Canteen'
+    });
+
+    const res = await agent.get(
+      `/api/reports/daily?start_date=2026-03-19&end_date=2026-03-21&vendor=Main%20Canteen&status=used&worker_category_id=${categoryA._id}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.details)).toBe(true);
+    expect(res.body.total).toBe(1);
+    expect(res.body.details[0].employee_id).toBe(String(empA._id));
+    expect(res.body.details[0].canteen_location).toBe('Main Canteen');
+    expect(res.body.details[0].status).toBe('used');
+  });
+
+  test('GET /api/reports/daily rejects invalid status filter', async () => {
+    const res = await agent.get('/api/reports/daily?status=invalid-status');
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 });

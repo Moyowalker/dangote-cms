@@ -1,5 +1,7 @@
 const {
   MealPlan,
+  Vendor,
+  VendorRestriction,
   EntitlementPolicy,
   WorkerEntitlementBalance,
   MealRecord
@@ -62,7 +64,66 @@ async function ensureBalance(employee, mealType, date) {
   return balance;
 }
 
-async function validateConsumptionEligibility(employee, mealType, date) {
+async function validateVendorRestrictions(employee, mealType, canteenLocation) {
+  if (!canteenLocation || !employee.worker_category_id) {
+    return { ok: true };
+  }
+
+  const vendors = await Vendor.find({ canteen_location: canteenLocation, active: true });
+  if (!vendors || vendors.length === 0) {
+    return { ok: true };
+  }
+
+  const vendorIds = vendors.map((vendor) => vendor._id);
+  const activeRestrictions = await VendorRestriction.find({ vendor_id: { $in: vendorIds }, active: true });
+  if (!activeRestrictions || activeRestrictions.length === 0) {
+    return { ok: true };
+  }
+
+  const allowed = activeRestrictions.some(
+    (restriction) =>
+      String(restriction.worker_category_id) === String(employee.worker_category_id)
+      && restriction.meal_type === mealType
+  );
+
+  if (!allowed) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Vendor restriction does not allow this worker category for the selected meal type'
+    };
+  }
+
+  return { ok: true };
+}
+
+async function validateDuplicateWindow(employee, mealType, date) {
+  const configured = Number(process.env.DUPLICATE_WINDOW_MINUTES || 2);
+  const duplicateWindowMinutes = Number.isFinite(configured) && configured > 0 ? configured : 2;
+  const cutoff = new Date(Date.now() - (duplicateWindowMinutes * 60 * 1000));
+
+  const recent = await MealRecord.findOne({
+    employee_id: employee._id,
+    meal_type: mealType,
+    consumed_at: { $gte: cutoff }
+  });
+
+  if (!recent) {
+    return { ok: true };
+  }
+
+  if (String(recent.consumption_date) !== String(date)) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Duplicate redemption attempt blocked by duplicate window'
+    };
+  }
+
+  return { ok: true };
+}
+
+async function validateConsumptionEligibility(employee, mealType, date, options = {}) {
   if (!VALID_MEAL_TYPES.includes(mealType)) {
     return { ok: false, status: 400, error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` };
   }
@@ -80,6 +141,16 @@ async function validateConsumptionEligibility(employee, mealType, date) {
 
   if (existing) {
     return { ok: false, status: 409, error: 'Meal already recorded for this employee today' };
+  }
+
+  const duplicateWindowCheck = await validateDuplicateWindow(employee, mealType, date);
+  if (!duplicateWindowCheck.ok) {
+    return duplicateWindowCheck;
+  }
+
+  const vendorRestrictionCheck = await validateVendorRestrictions(employee, mealType, options.canteenLocation);
+  if (!vendorRestrictionCheck.ok) {
+    return vendorRestrictionCheck;
   }
 
   const balance = await ensureBalance(employee, mealType, date);

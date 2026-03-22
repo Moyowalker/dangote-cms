@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "test": "jest --forceExit"
+    "test": "jest --forceExit",
+    "migrate:worker-identifier": "node scripts/migrate-worker-identifiers.js",
+    "seed:nonprod": "node scripts/seed-nonprod.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

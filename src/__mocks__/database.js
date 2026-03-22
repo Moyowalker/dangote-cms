@@ -43,6 +43,24 @@ class QueryMock {
   catch(rej) { return Promise.resolve(this._v).catch(rej); }
 }
 
+function toComparableValue(value) {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  const parsedDate = Date.parse(value);
+  if (!Number.isNaN(parsedDate) && typeof value === 'string' && value.includes('T')) {
+    return parsedDate;
+  }
+
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber) && String(value).trim() !== '') {
+    return asNumber;
+  }
+
+  return String(value ?? '');
+}
+
 function matchFilter(doc, filter) {
   if (!filter || Object.keys(filter).length === 0) return true;
   for (const [k, v] of Object.entries(filter)) {
@@ -50,11 +68,29 @@ function matchFilter(doc, filter) {
       if (!v.some((f) => matchFilter(doc, f))) return false;
     } else if (k === '$expr') {
       continue;
-    } else if (v !== null && typeof v === 'object' && !Array.isArray(v) && v.$regex !== undefined) {
-      const re = new RegExp(v.$regex, v.$options || '');
-      if (!re.test(String(doc[k] ?? ''))) return false;
-    } else if (v !== null && typeof v === 'object' && !Array.isArray(v) && v.$gt !== undefined) {
-      if (!(Number(doc[k] ?? 0) > Number(v.$gt))) return false;
+    } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      if (v.$regex !== undefined) {
+        const re = new RegExp(v.$regex, v.$options || '');
+        if (!re.test(String(doc[k] ?? ''))) return false;
+        continue;
+      }
+
+      if (v.$in !== undefined) {
+        if (!Array.isArray(v.$in)) return false;
+        if (!v.$in.some((item) => String(item) === String(doc[k]))) return false;
+      }
+
+      if (v.$gt !== undefined) {
+        if (!(toComparableValue(doc[k]) > toComparableValue(v.$gt))) return false;
+      }
+
+      if (v.$gte !== undefined) {
+        if (!(toComparableValue(doc[k]) >= toComparableValue(v.$gte))) return false;
+      }
+
+      if (v.$lte !== undefined) {
+        if (!(toComparableValue(doc[k]) <= toComparableValue(v.$lte))) return false;
+      }
     } else if (v === null) {
       if (doc[k] != null) return false;
     } else if (typeof v === 'boolean') {
@@ -108,7 +144,10 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
     },
 
     async create(data) {
-      const full = { ...defaults, ...data };
+      const resolvedDefaults = Object.fromEntries(
+        Object.entries(defaults).map(([key, value]) => [key, typeof value === 'function' ? value() : value])
+      );
+      const full = { ...resolvedDefaults, ...data };
       checkUnique(full);
       const doc = makeDoc({ ...full, created_at: new Date().toISOString() });
       store.set(doc.id, doc);
@@ -202,18 +241,33 @@ const mealPlanStore   = new Map();
 const menuItemStore   = new Map();
 const mealRecordStore = new Map();
 const workerCategoryStore = new Map();
+const vendorStore = new Map();
+const vendorRestrictionStore = new Map();
 const entitlementPolicyStore = new Map();
 const workerEntitlementBalanceStore = new Map();
+const transactionStore = new Map();
+const reconciliationRecordStore = new Map();
+const qrTokenMetadataStore = new Map();
 const auditLogStore = new Map();
 
-const User     = createModel(userStore,     ['username']);
-const Employee = createModel(employeeStore, ['employee_number', 'email', 'badge_number'], { active: true, status: 'active' });
+const User     = createModel(userStore,     ['username'], { role: 'viewer' });
+const Employee = createModel(employeeStore, ['worker_identifier', 'employee_number', 'email', 'badge_number'], { active: true, status: 'active' });
+const Worker = Employee;
 const MealPlan = createModel(mealPlanStore);
 const MenuItem = createModel(menuItemStore);
-const MealRecord = createModel(mealRecordStore);
+const MealRecord = createModel(mealRecordStore, [], {
+  status: 'used',
+  canteen_location: 'Main Canteen',
+  consumed_at: () => new Date()
+});
 const WorkerCategory = createModel(workerCategoryStore, ['code']);
+const Vendor = createModel(vendorStore, ['code']);
+const VendorRestriction = createModel(vendorRestrictionStore);
 const EntitlementPolicy = createModel(entitlementPolicyStore);
 const WorkerEntitlementBalance = createModel(workerEntitlementBalanceStore);
+const Transaction = createModel(transactionStore, ['transaction_reference']);
+const ReconciliationRecord = createModel(reconciliationRecordStore);
+const QRTokenMetadata = createModel(qrTokenMetadataStore, ['token_jti']);
 const AuditLog = createModel(auditLogStore);
 
 // Enforce compound unique constraint: (employee_id, meal_type, consumption_date)
@@ -233,6 +287,15 @@ MealRecord.create = async function (data) {
   return _origMealRecordCreate(data);
 };
 
+const _origEmployeeCreate = Employee.create.bind(Employee);
+Employee.create = async function (data) {
+  const payload = { ...data };
+  if (!payload.worker_identifier && payload.employee_number) {
+    payload.worker_identifier = payload.employee_number;
+  }
+  return _origEmployeeCreate(payload);
+};
+
 // ── Lifecycle helpers ─────────────────────────────────────────────────────────
 
 async function initializeDatabase() {
@@ -250,11 +313,17 @@ module.exports = {
   closeDatabase,
   User,
   Employee,
+  Worker,
   MealPlan,
   WorkerCategory,
+  Vendor,
+  VendorRestriction,
   EntitlementPolicy,
   WorkerEntitlementBalance,
   MenuItem,
   MealRecord,
+  Transaction,
+  ReconciliationRecord,
+  QRTokenMetadata,
   AuditLog
 };

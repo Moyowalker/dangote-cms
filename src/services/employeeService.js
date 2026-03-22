@@ -47,7 +47,11 @@ function applyRoleScope(baseFilter, user) {
     return scoped;
   }
 
-  if (user.role === 'staff') {
+  if (user.role === 'viewer' || user.role === 'hr') {
+    return scoped;
+  }
+
+  if (user.role === 'staff' || user.role === 'vendor') {
     scoped.active = true;
     return scoped;
   }
@@ -67,6 +71,7 @@ function buildSearchFilter(search) {
   return {
     $or: [
       { name: { $regex: search, $options: 'i' } },
+      { worker_identifier: { $regex: search, $options: 'i' } },
       { employee_number: { $regex: search, $options: 'i' } },
       { email: { $regex: search, $options: 'i' } }
     ]
@@ -135,6 +140,7 @@ async function createEmployee(payload) {
 
   try {
     return await Employee.create({
+      worker_identifier: employee_number.trim(),
       employee_number: employee_number.trim(),
       name: name.trim(),
       department: department.trim(),
@@ -205,6 +211,7 @@ async function updateEmployee(id, payload) {
       throw makeError(400, 'VALIDATION_ERROR', 'employee_number must be a non-empty string');
     }
     updates.employee_number = employee_number.trim();
+    updates.worker_identifier = employee_number.trim();
   }
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim()) {
