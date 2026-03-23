@@ -17,6 +17,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
   await MealRecord.deleteMany({});
+  await User.deleteMany({});
   await Employee.deleteMany({});
 });
 
@@ -43,6 +44,35 @@ describe('Employees Routes', () => {
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('John Doe');
     expect(res.body.employee_number).toBe('EMP001');
+  });
+
+  test('POST /api/employees accepts a worker photo data URL', async () => {
+    const res = await agent.post('/api/employees').send({
+      employee_number: 'EMP001PHOTO',
+      name: 'John Photo',
+      department: 'Engineering',
+      badge_number: 'BADGE001PHOTO',
+      photo_data_url: 'data:image/png;base64,ZmFrZV9pbWFnZQ=='
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.photo_data_url).toBe('data:image/png;base64,ZmFrZV9pbWFnZQ==');
+  });
+
+  test('PUT /api/employees rejects an invalid worker photo payload', async () => {
+    const createRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP003PHOTO',
+      name: 'Photo Reject',
+      department: 'IT',
+      badge_number: 'BADGE003PHOTO'
+    });
+
+    const res = await agent.put(`/api/employees/${createRes.body.id}`).send({
+      photo_data_url: 'not-an-image'
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
   test('POST /api/employees rejects invalid email with consistent error envelope', async () => {
@@ -160,5 +190,56 @@ describe('Employees Routes', () => {
     expect(res.body.pagination.page).toBe(1);
     expect(res.body.pagination.limit).toBe(1);
     expect(res.body.pagination.total).toBe(2);
+  });
+
+  test('POST /api/employees/:id/portal-access provisions worker login details', async () => {
+    const createRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP005',
+      name: 'Portal Worker',
+      department: 'Finance',
+      badge_number: 'BADGE005'
+    });
+
+    const portalRes = await agent.post(`/api/employees/${createRes.body.id}/portal-access`).send({});
+
+    expect(portalRes.status).toBe(201);
+    expect(portalRes.body.enabled).toBe(true);
+    expect(portalRes.body.username).toBe('EMP005');
+    expect(typeof portalRes.body.temporary_password).toBe('string');
+    expect(portalRes.body.temporary_password.length).toBeGreaterThan(5);
+
+    const employeeAgent = request.agent(app);
+    const loginRes = await employeeAgent.post('/api/auth/login').send({
+      username: portalRes.body.username,
+      password: portalRes.body.temporary_password
+    });
+
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.user.role).toBe('employee');
+    expect(loginRes.body.user.employee_id).toBe(createRes.body.id);
+  });
+
+  test('DELETE /api/employees/:id/portal-access revokes worker login access', async () => {
+    const createRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP006',
+      name: 'Revoked Worker',
+      department: 'Ops',
+      badge_number: 'BADGE006'
+    });
+
+    const portalRes = await agent.post(`/api/employees/${createRes.body.id}/portal-access`).send({});
+    expect(portalRes.status).toBe(201);
+
+    const revokeRes = await agent.delete(`/api/employees/${createRes.body.id}/portal-access`);
+    expect(revokeRes.status).toBe(200);
+    expect(revokeRes.body.enabled).toBe(false);
+
+    const employeeAgent = request.agent(app);
+    const loginRes = await employeeAgent.post('/api/auth/login').send({
+      username: portalRes.body.username,
+      password: portalRes.body.temporary_password
+    });
+
+    expect(loginRes.status).toBe(401);
   });
 });

@@ -5,6 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Workers from './Workers';
 import client from '../api/client';
 
+const { toDataURL } = vi.hoisted(() => ({
+  toDataURL: vi.fn()
+}));
+
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL
+  }
+}));
+
 vi.mock('../api/client', () => ({
   default: {
     get: vi.fn(),
@@ -17,8 +27,14 @@ vi.mock('../api/client', () => ({
 describe('Workers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    toDataURL.mockResolvedValue('data:image/png;base64,fake');
     window.alert = vi.fn();
     window.confirm = vi.fn(() => true);
+    document.execCommand = vi.fn(() => true);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined
+    });
   });
 
   it('loads and filters workers by active status', async () => {
@@ -126,5 +142,109 @@ describe('Workers', () => {
     await waitFor(() => {
       expect(client.delete).toHaveBeenCalledWith('/employees/1');
     });
+  });
+
+  it('issues and renders a worker QR code, then supports copy and refresh', async () => {
+    const user = userEvent.setup();
+
+    client.get.mockResolvedValue({
+      data: [
+        { id: '1', employee_number: 'EMP-001', badge_number: 'BG-001', name: 'Ada Worker', department: 'Ops', active: true }
+      ]
+    });
+
+    client.post
+      .mockResolvedValueOnce({
+        data: {
+          token: 'signed-token-one',
+          expires_at: '2099-03-23T10:05:00.000Z',
+          ttl_seconds: 120
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          token: 'signed-token-two',
+          expires_at: '2099-03-23T10:10:00.000Z',
+          ttl_seconds: 120
+        }
+      });
+
+    render(<Workers />);
+
+    expect(await screen.findByText('Ada Worker')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /qr code/i }));
+
+    expect(await screen.findByRole('img', { name: /qr code for ada worker/i })).toBeInTheDocument();
+    expect(client.post).toHaveBeenNthCalledWith(1, '/tickets/qr-token', {
+      employee_id: '1',
+      ttl_seconds: 120
+    });
+    expect(toDataURL).toHaveBeenNthCalledWith(1, 'signed-token-one', expect.objectContaining({ width: 320 }));
+
+    await user.click(screen.getByRole('button', { name: /copy token/i }));
+    expect(await screen.findByRole('button', { name: /copied/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /refresh qr/i }));
+
+    await waitFor(() => {
+      expect(client.post).toHaveBeenNthCalledWith(2, '/tickets/qr-token', {
+        employee_id: '1',
+        ttl_seconds: 120
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: /signed qr token/i })).toHaveValue('signed-token-two');
+    });
+  });
+
+  it('provisions worker portal access and shows the generated login credentials', async () => {
+    const user = userEvent.setup();
+
+    client.get
+      .mockResolvedValueOnce({
+        data: [
+          { id: '1', employee_number: 'EMP-001', badge_number: 'BG-001', name: 'Ada Worker', department: 'Ops', active: true }
+        ]
+      })
+      .mockResolvedValueOnce({
+        data: {
+          enabled: false,
+          username: 'EMP-001',
+          employee_id: '1',
+          employee_number: 'EMP-001',
+          worker_name: 'Ada Worker'
+        }
+      });
+
+    client.post.mockResolvedValueOnce({
+      data: {
+        enabled: true,
+        username: 'EMP-001',
+        temporary_password: 'tempPass12',
+        employee_id: '1',
+        employee_number: 'EMP-001',
+        worker_name: 'Ada Worker'
+      }
+    });
+
+    render(<Workers />);
+
+    expect(await screen.findByText('Ada Worker')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /portal access/i }));
+
+    expect(await screen.findByText(/portal access is not active yet/i)).toBeInTheDocument();
+    expect(client.get).toHaveBeenNthCalledWith(2, '/employees/1/portal-access');
+
+    await user.click(screen.getByRole('button', { name: /create access/i }));
+
+    await waitFor(() => {
+      expect(client.post).toHaveBeenCalledWith('/employees/1/portal-access', {
+        username: 'EMP-001'
+      });
+    });
+
+    expect(await screen.findByText(/temporary password:/i)).toBeInTheDocument();
+    expect(screen.getByText(/tempPass12/i)).toBeInTheDocument();
   });
 });

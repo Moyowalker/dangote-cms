@@ -8,6 +8,14 @@ const { buildDailyReport, buildFailureReport } = require('../services/reportServ
 
 const router = express.Router();
 
+function hasPhoneNumber(employee) {
+  return typeof employee.phone === 'string' && employee.phone.trim().length > 0;
+}
+
+function hasProfilePhoto(employee) {
+  return typeof employee.photo_data_url === 'string' && employee.photo_data_url.trim().length > 0;
+}
+
 router.get('/daily', requireReportViewer, async (req, res) => {
   try {
     const report = await buildDailyReport(req.query);
@@ -109,6 +117,41 @@ router.get('/failures', requireReportViewer, async (req, res) => {
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
+  }
+});
+
+router.get('/worker-readiness', requireReportViewer, async (req, res) => {
+  try {
+    const employees = await Employee.find({ active: true }).sort({ name: 1 });
+
+    const workers = employees
+      .map((employeeDoc) => {
+        const employee = employeeDoc.toJSON ? employeeDoc.toJSON() : { ...employeeDoc };
+        const phonePresent = hasPhoneNumber(employee);
+        const photoPresent = hasProfilePhoto(employee);
+
+        return {
+          ...employee,
+          phone_present: phonePresent,
+          photo_present: photoPresent,
+          missing_phone: !phonePresent,
+          missing_photo: !photoPresent
+        };
+      })
+      .filter((employee) => employee.missing_phone || employee.missing_photo);
+
+    const summary = {
+      active_workers: employees.length,
+      missing_phone: workers.filter((employee) => employee.missing_phone).length,
+      missing_photo: workers.filter((employee) => employee.missing_photo).length,
+      missing_both: workers.filter((employee) => employee.missing_phone && employee.missing_photo).length,
+      ready_workers: employees.length - workers.length
+    };
+
+    return res.json({ summary, workers, total: workers.length });
+  } catch (err) {
+    console.error(err);
+    return sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
 

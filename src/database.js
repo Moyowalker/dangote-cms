@@ -16,7 +16,9 @@ const userSchema = new mongoose.Schema(
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     role: { type: String, enum: ['admin', 'vendor', 'viewer', 'hr', 'staff', 'employee'], default: 'viewer' },
-    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null }
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+    password_recovery_token_hash: { type: String, default: null },
+    password_recovery_expires_at: { type: Date, default: null }
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
@@ -41,6 +43,7 @@ const employeeSchema = new mongoose.Schema(
     department: { type: String, required: true },
     email: { type: String, unique: true, sparse: true, default: null },
     phone: { type: String, default: null },
+    photo_data_url: { type: String, default: null },
     badge_number: { type: String, required: true, unique: true },
     status: { type: String, enum: ['active', 'suspended', 'deactivated'], default: 'active' },
     worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', default: null },
@@ -55,11 +58,10 @@ employeeSchema.index({ worker_identifier: 1 }, { unique: true });
 employeeSchema.index({ badge_number: 1 }, { unique: true });
 employeeSchema.index({ created_at: -1 });
 
-employeeSchema.pre('validate', function syncWorkerIdentifier(next) {
+employeeSchema.pre('validate', function syncWorkerIdentifier() {
   if (!this.worker_identifier && this.employee_number) {
     this.worker_identifier = this.employee_number;
   }
-  next();
 });
 
 const workerCategorySchema = new mongoose.Schema(
@@ -137,6 +139,7 @@ const qrTokenMetadataSchema = new mongoose.Schema(
     expires_at: { type: Date, required: true },
     issued_at: { type: Date, default: Date.now },
     last_used_at: { type: Date, default: null },
+    consumed_at: { type: Date, default: null },
     revoked: { type: Boolean, default: false }
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
@@ -145,6 +148,7 @@ const qrTokenMetadataSchema = new mongoose.Schema(
 qrTokenMetadataSchema.index({ token_jti: 1 }, { unique: true });
 qrTokenMetadataSchema.index({ employee_id: 1, expires_at: -1 });
 qrTokenMetadataSchema.index({ expires_at: 1 });
+qrTokenMetadataSchema.index({ consumed_at: 1 });
 
 const entitlementPolicySchema = new mongoose.Schema(
   {

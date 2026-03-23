@@ -106,7 +106,8 @@ describe('VendorInterface', () => {
           employee: {
             name: 'Ada Worker',
             employee_number: 'EMP-001',
-            badge_number: 'BG-1001'
+            badge_number: 'BG-1001',
+            photo_data_url: 'data:image/png;base64,ZmFrZQ=='
           },
           can_consume: true,
           meal_type: 'lunch',
@@ -138,6 +139,7 @@ describe('VendorInterface', () => {
     await user.click(screen.getByRole('button', { name: 'Validate' }));
 
     await screen.findByText(/lookup source:/i);
+    expect(screen.getByRole('img', { name: /worker profile for ada worker/i })).toBeInTheDocument();
     expect(client.post).toHaveBeenNthCalledWith(1, '/tickets/validate-token', {
       token: 'signed-token-value',
       meal_type: 'lunch',
@@ -146,16 +148,46 @@ describe('VendorInterface', () => {
       timeout: 8000
     });
 
+    expect(screen.getByRole('button', { name: 'Redeem' })).toBeDisabled();
+    await user.click(screen.getByLabelText(/visually confirmed/i));
     await user.click(screen.getByRole('button', { name: 'Redeem' }));
 
     await screen.findByText(/meal recorded successfully/i);
     expect(client.post).toHaveBeenNthCalledWith(2, '/tickets/consume', {
       badge_number: 'BG-1001',
+      token: 'signed-token-value',
       meal_type: 'lunch',
       canteen_location: 'Main Canteen'
     }, {
       timeout: 8000
     });
+  });
+
+  it('requires operator confirmation before QR redemption becomes available', async () => {
+    const user = userEvent.setup();
+
+    client.post.mockResolvedValueOnce({
+      data: {
+        employee: {
+          name: 'Ada Worker',
+          employee_number: 'EMP-001',
+          badge_number: 'BG-1001'
+        },
+        can_consume: true,
+        meal_type: 'lunch',
+        remaining: 1
+      }
+    });
+
+    render(<VendorInterface />);
+
+    await user.click(screen.getByRole('button', { name: /qr token/i }));
+    await user.type(screen.getByRole('textbox', { name: /qr token/i }), 'signed-token-value');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(await screen.findByLabelText(/visually confirmed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Redeem' })).toBeDisabled();
+    expect(client.post).toHaveBeenCalledTimes(1);
   });
 
   it('can validate from the camera scanner without manual token paste', async () => {

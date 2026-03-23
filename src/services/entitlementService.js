@@ -213,9 +213,82 @@ async function rollbackConsumption(employee, mealType, date) {
   );
 }
 
+async function getWorkerMealStatus(employee, mealType, date) {
+  if (!VALID_MEAL_TYPES.includes(mealType)) {
+    throw new Error(`meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}`);
+  }
+
+  const allowedByPlan = await getMealPlanAllowance(employee, mealType);
+  const existing = await MealRecord.findOne({
+    employee_id: employee._id,
+    meal_type: mealType,
+    consumption_date: date
+  });
+  const balance = await WorkerEntitlementBalance.findOne({
+    employee_id: employee._id,
+    meal_type: mealType,
+    balance_date: date
+  });
+
+  const allowed = balance ? balance.allowed : await getDailyLimit(employee, mealType);
+  const consumed = Math.max(balance ? balance.consumed : 0, existing ? 1 : 0);
+  const remaining = allowedByPlan ? Math.max(allowed - consumed, 0) : 0;
+
+  if (!allowedByPlan) {
+    return {
+      meal_type: mealType,
+      status: 'not_in_plan',
+      can_consume: false,
+      allowed,
+      consumed,
+      remaining,
+      consumed_at: existing?.consumed_at || null,
+      message: 'Your meal plan does not cover this meal today.'
+    };
+  }
+
+  if (existing) {
+    return {
+      meal_type: mealType,
+      status: 'consumed',
+      can_consume: false,
+      allowed,
+      consumed,
+      remaining,
+      consumed_at: existing.consumed_at,
+      message: 'Already redeemed today.'
+    };
+  }
+
+  if (remaining <= 0) {
+    return {
+      meal_type: mealType,
+      status: 'exhausted',
+      can_consume: false,
+      allowed,
+      consumed,
+      remaining,
+      consumed_at: null,
+      message: 'No remaining entitlement for this meal today.'
+    };
+  }
+
+  return {
+    meal_type: mealType,
+    status: 'eligible',
+    can_consume: true,
+    allowed,
+    consumed,
+    remaining,
+    consumed_at: null,
+    message: 'Available for redemption.'
+  };
+}
+
 module.exports = {
   VALID_MEAL_TYPES,
   validateConsumptionEligibility,
   consumeEntitlement,
-  rollbackConsumption
+  rollbackConsumption,
+  getWorkerMealStatus
 };

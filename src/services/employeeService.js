@@ -1,9 +1,13 @@
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
-const { Employee } = require('../database');
+const { Employee, User } = require('../database');
 const { ROLE, canonicalizeRole } = require('../utils/roles');
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_STATUSES = ['active', 'suspended', 'deactivated'];
+const PHOTO_DATA_URL_PATTERN = /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/i;
+const MAX_PHOTO_DATA_URL_LENGTH = 150000;
 
 function makeError(status, code, message) {
   const err = new Error(message);
@@ -80,6 +84,48 @@ function buildSearchFilter(search) {
   };
 }
 
+function normalizeOptionalString(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function validatePhotoDataUrl(photoDataUrl) {
+  if (photoDataUrl === undefined) {
+    return undefined;
+  }
+
+  const normalized = normalizeOptionalString(photoDataUrl);
+  if (normalized === null) {
+    return null;
+  }
+
+  if (typeof normalized !== 'string') {
+    throw makeError(400, 'VALIDATION_ERROR', 'photo_data_url must be a string');
+  }
+
+  if (!PHOTO_DATA_URL_PATTERN.test(normalized)) {
+    throw makeError(400, 'VALIDATION_ERROR', 'photo_data_url must be a PNG, JPEG, or WebP data URL');
+  }
+
+  if (normalized.length > MAX_PHOTO_DATA_URL_LENGTH) {
+    throw makeError(400, 'VALIDATION_ERROR', 'photo_data_url is too large');
+  }
+
+  return normalized;
+}
+
 async function listEmployees({ query, user }) {
   const { search, department } = query;
   const filter = {};
@@ -106,6 +152,7 @@ async function createEmployee(payload) {
     department,
     email,
     phone,
+    photo_data_url,
     badge_number,
     meal_plan_id,
     worker_category_id,
@@ -139,6 +186,7 @@ async function createEmployee(payload) {
   }
 
   const lifecycle = normalizeLifecycle({ status, active });
+  const normalizedPhotoDataUrl = validatePhotoDataUrl(photo_data_url);
 
   try {
     return await Employee.create({
@@ -148,6 +196,7 @@ async function createEmployee(payload) {
       department: department.trim(),
       email: email || null,
       phone: phone || null,
+      photo_data_url: normalizedPhotoDataUrl === undefined ? null : normalizedPhotoDataUrl,
       badge_number: badge_number.trim(),
       meal_plan_id: meal_plan_id || null,
       worker_category_id: worker_category_id || null,
@@ -201,6 +250,7 @@ async function updateEmployee(id, payload) {
     department,
     email,
     phone,
+    photo_data_url,
     badge_number,
     meal_plan_id,
     worker_category_id,
@@ -234,6 +284,7 @@ async function updateEmployee(id, payload) {
   }
   if (email !== undefined) updates.email = email;
   if (phone !== undefined) updates.phone = phone;
+  if (photo_data_url !== undefined) updates.photo_data_url = validatePhotoDataUrl(photo_data_url);
 
   if (badge_number !== undefined) {
     if (typeof badge_number !== 'string' || !badge_number.trim()) {
@@ -287,12 +338,119 @@ async function deleteEmployee(id) {
     throw makeError(404, 'NOT_FOUND', 'Employee not found');
   }
 
+  await User.deleteMany({ employee_id: id, role: ROLE.EMPLOYEE });
   const deleted = await Employee.findByIdAndDelete(id);
   if (!deleted) {
     throw makeError(404, 'NOT_FOUND', 'Employee not found');
   }
 
   return deleted;
+}
+
+async function getEmployeePortalAccess(id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw makeError(404, 'NOT_FOUND', 'Employee not found');
+  }
+
+  const employee = await Employee.findById(id);
+  if (!employee) {
+    throw makeError(404, 'NOT_FOUND', 'Employee not found');
+  }
+
+  const linkedUser = await User.findOne({ employee_id: employee._id, role: ROLE.EMPLOYEE });
+
+  return {
+    enabled: Boolean(linkedUser),
+    username: linkedUser?.username || employee.employee_number,
+    employee_id: employee.id,
+    employee_number: employee.employee_number,
+    worker_name: employee.name
+  };
+}
+
+function generateTemporaryPassword() {
+  return crypto.randomBytes(6).toString('base64url');
+}
+
+async function provisionEmployeePortalAccess(id, payload = {}) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw makeError(404, 'NOT_FOUND', 'Employee not found');
+  }
+
+  const employee = await Employee.findById(id);
+  if (!employee) {
+    throw makeError(404, 'NOT_FOUND', 'Employee not found');
+  }
+
+  const requestedUsername = payload.username === undefined ? employee.employee_number : payload.username;
+  if (typeof requestedUsername !== 'string' || !requestedUsername.trim()) {
+    throw makeError(400, 'VALIDATION_ERROR', 'username must be a non-empty string');
+  }
+
+  const normalizedUsername = requestedUsername.trim();
+  const requestedPassword = payload.password;
+  if (requestedPassword !== undefined && (typeof requestedPassword !== 'string' || !requestedPassword.trim())) {
+    throw makeError(400, 'VALIDATION_ERROR', 'password must be a non-empty string when provided');
+  }
+
+  const temporaryPassword = typeof requestedPassword === 'string' && requestedPassword.trim()
+    ? requestedPassword.trim()
+    : generateTemporaryPassword();
+
+  const existingByUsername = await User.findOne({ username: normalizedUsername });
+  const linkedUser = await User.findOne({ employee_id: employee._id, role: ROLE.EMPLOYEE });
+
+  if (existingByUsername && (!linkedUser || String(existingByUsername.id) !== String(linkedUser.id))) {
+    throw makeError(409, 'CONFLICT', 'That username is already in use');
+  }
+
+  const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+  if (linkedUser) {
+    linkedUser.username = normalizedUsername;
+    linkedUser.password = hashedPassword;
+    linkedUser.password_recovery_token_hash = null;
+    linkedUser.password_recovery_expires_at = null;
+    await linkedUser.save();
+  } else {
+    await User.create({
+      username: normalizedUsername,
+      password: hashedPassword,
+      role: ROLE.EMPLOYEE,
+      employee_id: employee._id,
+      password_recovery_token_hash: null,
+      password_recovery_expires_at: null
+    });
+  }
+
+  return {
+    enabled: true,
+    username: normalizedUsername,
+    temporary_password: temporaryPassword,
+    employee_id: employee.id,
+    employee_number: employee.employee_number,
+    worker_name: employee.name
+  };
+}
+
+async function revokeEmployeePortalAccess(id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw makeError(404, 'NOT_FOUND', 'Employee not found');
+  }
+
+  const employee = await Employee.findById(id);
+  if (!employee) {
+    throw makeError(404, 'NOT_FOUND', 'Employee not found');
+  }
+
+  await User.deleteMany({ employee_id: employee._id, role: ROLE.EMPLOYEE });
+
+  return {
+    enabled: false,
+    employee_id: employee.id,
+    employee_number: employee.employee_number,
+    worker_name: employee.name
+  };
 }
 
 module.exports = {
@@ -302,5 +460,8 @@ module.exports = {
   getEmployeeById,
   updateEmployee,
   deleteEmployee,
+  getEmployeePortalAccess,
+  provisionEmployeePortalAccess,
+  revokeEmployeePortalAccess,
   makeError
 };

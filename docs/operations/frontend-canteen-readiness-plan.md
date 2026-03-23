@@ -139,9 +139,9 @@ Status:
 - Dashboard now surfaces failed attempts, duplicate-window blocks, redemption totals, and redemptions by location using the existing backend indicators endpoint.
 - Dashboard now also surfaces failure reasons and failed-attempt hotspots by location using ticket-consume audit data.
 - Dashboard now also surfaces latency and stall visibility for validate and consume paths using backend request-health indicators.
-- A reconciliation screen now lets admins review vendor-day failed attempts, discrepancy indicators, vendor-location drilldowns for confirmed consumptions and failed attempts, and transaction-reference linkage gaps by date from the React app.
+- A reconciliation screen now lets admins review vendor-day failed attempts, discrepancy indicators, vendor-location drilldowns for confirmed consumptions and failed attempts, transaction-reference linkage gaps, and whether failed attempts were later confirmed or remain unresolved by date from the React app.
 - Reports now expose backend-backed date-range, vendor, worker-category, and status filters plus transaction details with transaction-reference evidence and missing-link warnings for investigation.
-- Remaining work is richer investigation support such as fuller missing-confirmation analysis beyond the current transaction-reference evidence, clearer duplicate-pattern interpretation, and more direct admin response tooling.
+- Remaining work is richer investigation support such as broader cross-transaction tracing beyond the current matched-versus-unresolved evidence, clearer duplicate-pattern interpretation, and more direct admin response tooling.
 
 Acceptance criteria:
 
@@ -158,7 +158,7 @@ Frontend tasks:
 
 - Build worker self-service pages if worker-facing web remains in release scope.
 - Add entitlement management UI if policy assignment must move out of backend-only flows.
-- Expand reconciliation beyond the current vendor-location drilldown into fuller missing-confirmation analysis, broader finance investigation support, and stronger cross-transaction tracing if finance or operations needs them.
+- Expand reconciliation beyond the current vendor-location drilldown into broader finance investigation support and stronger cross-transaction tracing if finance or operations needs them.
 
 Acceptance criteria:
 

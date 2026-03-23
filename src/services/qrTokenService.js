@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { QRTokenMetadata } = require('../database');
 
-const DEFAULT_TTL_SECONDS = 300;
+const DEFAULT_TTL_SECONDS = 120;
 
 function makeError(message, status = 400, code = 'VALIDATION_ERROR') {
   const err = new Error(message);
@@ -61,6 +61,7 @@ async function issueSignedQrToken(employeeId, ttlSeconds = DEFAULT_TTL_SECONDS) 
     employee_id: employeeId,
     issued_at: new Date(issuedAtUnix * 1000),
     expires_at: new Date(expUnix * 1000),
+    consumed_at: null,
     revoked: false
   });
 
@@ -102,6 +103,10 @@ async function verifySignedQrToken(token) {
     throw makeError('QR token is not active', 401, 'INVALID_QR_TOKEN');
   }
 
+  if (metadata.consumed_at) {
+    throw makeError('QR token has already been redeemed', 409, 'CONSUMED_QR_TOKEN');
+  }
+
   if (new Date(metadata.expires_at).getTime() <= Date.now()) {
     throw makeError('QR token has expired', 401, 'EXPIRED_QR_TOKEN');
   }
@@ -118,8 +123,38 @@ async function verifySignedQrToken(token) {
   };
 }
 
+async function markQrTokenConsumed(tokenJti) {
+  const now = new Date();
+  const metadata = await QRTokenMetadata.findOneAndUpdate(
+    {
+      token_jti: String(tokenJti),
+      revoked: false,
+      consumed_at: null,
+      expires_at: { $gt: now }
+    },
+    { $set: { consumed_at: now, last_used_at: now } },
+    { new: true }
+  );
+
+  if (!metadata) {
+    throw makeError('QR token is no longer redeemable', 409, 'CONSUMED_QR_TOKEN');
+  }
+
+  return metadata;
+}
+
+async function resetQrTokenConsumption(tokenJti) {
+  await QRTokenMetadata.findOneAndUpdate(
+    { token_jti: String(tokenJti) },
+    { $set: { consumed_at: null } },
+    { new: true }
+  );
+}
+
 module.exports = {
   issueSignedQrToken,
   verifySignedQrToken,
+  markQrTokenConsumed,
+  resetQrTokenConsumption,
   DEFAULT_TTL_SECONDS
 };

@@ -3,6 +3,7 @@ process.env.NODE_ENV = 'test';
 jest.mock('../src/database');
 
 const request = require('supertest');
+const bcrypt = require('bcrypt');
 const app = require('../src/app');
 const {
   initializeDatabase,
@@ -16,7 +17,8 @@ const {
   Vendor,
   VendorRestriction,
   Transaction,
-  WorkerEntitlementBalance
+  WorkerEntitlementBalance,
+  User
 } = require('../src/database');
 
 let agent;
@@ -289,5 +291,83 @@ describe('Tickets Routes', () => {
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
     expect(res.body.code).toBe('INVALID_QR_TOKEN');
+  });
+
+  test('GET /api/tickets/self-service-summary returns worker-scoped portal data for an employee user', async () => {
+    const password = await bcrypt.hash('employee-pass', 10);
+    await User.create({
+      username: 'employee.portal',
+      password,
+      role: 'employee',
+      employee_id: testEmployee._id
+    });
+
+    await MealRecord.create({
+      employee_id: testEmployee._id,
+      meal_type: 'breakfast',
+      status: 'used',
+      consumption_date: '2026-03-23',
+      consumed_at: new Date('2026-03-23T08:00:00.000Z'),
+      canteen_location: 'Main Canteen'
+    });
+
+    const employeeAgent = request.agent(app);
+    await employeeAgent.post('/api/auth/login').send({ username: 'employee.portal', password: 'employee-pass' });
+
+    const res = await employeeAgent.get('/api/tickets/self-service-summary?date=2026-03-23');
+
+    expect(res.status).toBe(200);
+    expect(res.body.employee.name).toBe('Test Employee');
+    expect(res.body.stats.consumed_today).toBe(1);
+    expect(res.body.stats.next_eligible_meal).toBeTruthy();
+    expect(res.body.meal_statuses).toHaveLength(3);
+    expect(res.body.meal_statuses.find((entry) => entry.meal_type === 'breakfast').status).toBe('consumed');
+    expect(res.body.recent_activity).toHaveLength(1);
+    expect(res.body.recent_activity[0].meal_type).toBe('breakfast');
+  });
+
+  test('POST /api/tickets/consume can redeem from a signed QR token only once', async () => {
+    const issued = await agent.post('/api/tickets/qr-token').send({
+      badge_number: 'BADGE001'
+    });
+
+    const first = await agent.post('/api/tickets/consume').send({
+      token: issued.body.token,
+      meal_type: 'lunch',
+      canteen_location: 'Main Canteen'
+    });
+
+    expect(first.status).toBe(201);
+    expect(first.body.employee.badge_number).toBe('BADGE001');
+    expect(first.body.transaction).toBeDefined();
+
+    const second = await agent.post('/api/tickets/consume').send({
+      token: issued.body.token,
+      meal_type: 'lunch',
+      canteen_location: 'Main Canteen'
+    });
+
+    expect(second.status).toBe(409);
+    expect(second.body.code).toBe('CONSUMED_QR_TOKEN');
+  });
+
+  test('POST /api/tickets/validate-token rejects a token after successful redemption', async () => {
+    const issued = await agent.post('/api/tickets/qr-token').send({
+      badge_number: 'BADGE001'
+    });
+
+    await agent.post('/api/tickets/consume').send({
+      token: issued.body.token,
+      meal_type: 'lunch',
+      canteen_location: 'Main Canteen'
+    });
+
+    const res = await agent.post('/api/tickets/validate-token').send({
+      token: issued.body.token,
+      meal_type: 'lunch'
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('CONSUMED_QR_TOKEN');
   });
 });

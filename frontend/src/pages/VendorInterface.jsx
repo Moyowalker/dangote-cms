@@ -83,6 +83,31 @@ function findRecoveredTransaction(transactions, attempt) {
   }) || null;
 }
 
+function renderWorkerIdentity(employee, sourceLabel = null) {
+  if (!employee) {
+    return null;
+  }
+
+  return (
+    <div className="vendor-worker-identity-card">
+      <div className="vendor-worker-identity-media">
+        {employee.photo_data_url ? (
+          <img src={employee.photo_data_url} alt={`Worker profile for ${employee.name}`} className="vendor-worker-photo" />
+        ) : (
+          <div className="vendor-worker-photo placeholder">No Photo</div>
+        )}
+      </div>
+      <div className="vendor-worker-identity-copy">
+        <p><strong>Worker:</strong> {employee.name} ({employee.employee_number})</p>
+        {sourceLabel ? <p><strong>Lookup source:</strong> {sourceLabel}</p> : null}
+        {employee.department ? <p><strong>Department:</strong> {employee.department}</p> : null}
+        {employee.badge_number ? <p><strong>Badge Number:</strong> {employee.badge_number}</p> : null}
+        <p><strong>Photo Check:</strong> {employee.photo_data_url ? 'Compare the live worker to the stored profile photo before serving.' : 'No worker photo is stored yet. Ask admin to upload one for stronger verification.'}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function VendorInterface() {
   const [lookupMode, setLookupMode] = useState('badge');
   const [badgeNumber, setBadgeNumber] = useState('');
@@ -94,6 +119,7 @@ export default function VendorInterface() {
   const [checkingOutcome, setCheckingOutcome] = useState(false);
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -152,6 +178,7 @@ export default function VendorInterface() {
   const activeBadgeNumber = lookupMode === 'qr'
     ? validationState.data?.employee?.badge_number || ''
     : badgeNumber.trim();
+  const requiresIdentityConfirmation = lookupMode === 'qr' && Boolean(activeBadgeNumber);
 
   async function runValidation({ mode = lookupMode, badgeInput = badgeNumber, qrInput = qrToken } = {}) {
     const normalizedBadge = badgeInput.trim();
@@ -163,6 +190,7 @@ export default function VendorInterface() {
 
     setValidationState({ status: 'processing', data: null, error: null });
     setRedeemState(buildInitialRedeemState());
+    setIdentityConfirmed(false);
     try {
       const res = isBadgeLookup
         ? await client.get(`/tickets/validate/${encodeURIComponent(normalizedBadge)}`, {
@@ -204,6 +232,7 @@ export default function VendorInterface() {
     e.preventDefault();
     const normalizedBadge = activeBadgeNumber;
     if (!normalizedBadge) return;
+    if (lookupMode === 'qr' && !identityConfirmed) return;
 
     const attempt = {
       badgeNumber: normalizedBadge,
@@ -214,10 +243,18 @@ export default function VendorInterface() {
     writePendingAttempt(attempt);
     setRedeemState({ status: 'processing', data: null, error: null, attempt, recoveryMessage: null });
     try {
-      const res = await client.post('/tickets/consume', {
+      const requestBody = {
         badge_number: normalizedBadge,
         meal_type: mealType,
         canteen_location: 'Main Canteen'
+      };
+
+      if (lookupMode === 'qr' && qrToken.trim()) {
+        requestBody.token = qrToken.trim();
+      }
+
+      const res = await client.post('/tickets/consume', {
+        ...requestBody
       }, {
         timeout: REQUEST_TIMEOUT_MS
       });
@@ -294,8 +331,16 @@ export default function VendorInterface() {
   }
 
   return (
-    <div className="page-container">
-      <h1 className="page-title">Vendor Interface</h1>
+    <div className="pg-wrap">
+      <div className="pg-header vendor">
+        <div className="pg-header-inner">
+          <div>
+            <h1 className="pg-title">Vendor Interface</h1>
+            <p className="pg-subtitle">Validate and record meal redemptions</p>
+          </div>
+        </div>
+      </div>
+      <div className="pg-body">
 
       <QrScannerPanel
         open={scannerOpen}
@@ -327,6 +372,7 @@ export default function VendorInterface() {
                 onClick={() => {
                   setLookupMode('badge');
                   setValidationState(buildInitialValidationState());
+                  setIdentityConfirmed(false);
                 }}
                 disabled={isBusy}
               >
@@ -338,6 +384,7 @@ export default function VendorInterface() {
                 onClick={() => {
                   setLookupMode('qr');
                   setValidationState(buildInitialValidationState());
+                  setIdentityConfirmed(false);
                 }}
                 disabled={isBusy}
               >
@@ -408,7 +455,7 @@ export default function VendorInterface() {
               type="button"
               className="btn btn-primary"
               onClick={handleRedeem}
-              disabled={disableActions || !activeBadgeNumber}
+              disabled={disableActions || !activeBadgeNumber || (requiresIdentityConfirmation && !identityConfirmed)}
               style={{ padding: '10px 32px', fontSize: '1rem', marginTop: '8px', marginLeft: '10px' }}
             >
               {isRedeeming ? 'Redeeming...' : 'Redeem'}
@@ -426,8 +473,7 @@ export default function VendorInterface() {
                 <p>{validationState.error}</p>
               ) : (
                 <>
-                  <p><strong>Worker:</strong> {validationState.data?.employee?.name} ({validationState.data?.employee?.employee_number})</p>
-                  {lookupMode === 'qr' && <p><strong>Lookup source:</strong> Signed QR token</p>}
+                  {renderWorkerIdentity(validationState.data?.employee, lookupMode === 'qr' ? 'Signed QR token' : 'Badge lookup')}
                   <p><strong>Meal Type:</strong> {validationState.data?.meal_type}</p>
                   <p><strong>Status:</strong> {validationState.data?.can_consume ? 'Eligible' : 'Already consumed'}</p>
                   <p><strong>Remaining balance:</strong> {validationState.data?.remaining ?? 0}</p>
@@ -438,6 +484,21 @@ export default function VendorInterface() {
               )}
             </div>
           )}
+
+          {requiresIdentityConfirmation ? (
+            <div className="vendor-confirmation-check">
+              <label htmlFor="vendor-identity-confirmation">
+                <input
+                  id="vendor-identity-confirmation"
+                  type="checkbox"
+                  checked={identityConfirmed}
+                  onChange={(event) => setIdentityConfirmed(event.target.checked)}
+                  disabled={disableActions}
+                />
+                <span>I have visually confirmed that the worker presenting this QR matches the validated profile.</span>
+              </label>
+            </div>
+          ) : null}
 
           {redeemState.status !== 'idle' && (
             <div className={`vendor-result ${redeemState.status === 'processing' ? 'info' : redeemState.status === 'succeeded' ? 'success' : redeemState.status === 'unknown' ? 'warning' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
@@ -451,8 +512,7 @@ export default function VendorInterface() {
                   <h3 style={{ color: '#155724', marginBottom: '8px' }}>
                     {redeemState.data?.recovered ? 'Meal Found in Recent History' : 'Meal Recorded Successfully'}
                   </h3>
-                  <p><strong>Worker:</strong> {redeemState.data?.employee?.name} ({redeemState.data?.employee?.employee_number})</p>
-                  <p><strong>Department:</strong> {redeemState.data?.employee?.department || '-'}</p>
+                  {redeemState.data?.employee ? renderWorkerIdentity(redeemState.data.employee) : null}
                   <p><strong>Meal Type:</strong> {redeemState.data?.record?.meal_type}</p>
                   <p><strong>Transaction reference:</strong> #{redeemState.data?.transaction?.transaction_reference || redeemState.data?.record?.id}</p>
                   <p><strong>Remaining balance:</strong> {redeemState.data?.remaining ?? 'Unavailable from recovery lookup'}</p>
@@ -513,6 +573,7 @@ export default function VendorInterface() {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );

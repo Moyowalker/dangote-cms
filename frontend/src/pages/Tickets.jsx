@@ -45,8 +45,16 @@ export default function Tickets() {
   }
 
   return (
-    <div className="page-container">
-      <h1 className="page-title">Ticket Operations</h1>
+    <div className="pg-wrap">
+      <div className="pg-header">
+        <div className="pg-header-inner">
+          <div>
+            <h1 className="pg-title">Ticket Operations</h1>
+            <p className="pg-subtitle">Record and track meal consumption</p>
+          </div>
+        </div>
+      </div>
+      <div className="pg-body">
 
       <div className="card">
         <div className="card-title">Record Meal Consumption</div>
@@ -112,6 +120,7 @@ export default function Tickets() {
             </table>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

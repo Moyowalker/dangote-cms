@@ -47,6 +47,7 @@ export default function Reports() {
   const [appliedFilters, setAppliedFilters] = useState(buildInitialFilters);
   const [dailyData, setDailyData] = useState(null);
   const [failureData, setFailureData] = useState(null);
+  const [workerReadinessData, setWorkerReadinessData] = useState(null);
   const [departmentData, setDepartmentData] = useState([]);
   const [workerCategories, setWorkerCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -74,21 +75,24 @@ export default function Reports() {
     try {
       const requests = [
         client.get('/reports/daily', { params: dailyParams }),
-        client.get('/reports/failures', { params: failureParams })
+        client.get('/reports/failures', { params: failureParams }),
+        client.get('/reports/worker-readiness')
       ];
 
       if (canShowDepartmentBreakdown) {
         requests.push(client.get('/reports/department', { params: { date: appliedFilters.date } }));
       }
 
-      const [dailyRes, failureRes, deptRes] = await Promise.all(requests);
+      const [dailyRes, failureRes, readinessRes, deptRes] = await Promise.all(requests);
       setDailyData(dailyRes.data);
       setFailureData(failureRes.data);
+      setWorkerReadinessData(readinessRes.data);
       setDepartmentData(canShowDepartmentBreakdown && Array.isArray(deptRes?.data) ? deptRes.data : []);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load reports');
       setDailyData(null);
       setFailureData(null);
+      setWorkerReadinessData(null);
       setDepartmentData([]);
     } finally {
       setLoading(false);
@@ -122,7 +126,7 @@ export default function Reports() {
 
   function getMealCount(mealType) {
     if (!dailyData?.summary) return 0;
-    const entry = dailyData.summary.find(c => c.meal_type === mealType);
+    const entry = dailyData.summary.find((count) => count.meal_type === mealType);
     return entry?.count || 0;
   }
 
@@ -149,8 +153,16 @@ export default function Reports() {
   }
 
   return (
-    <div className="page-container">
-      <h1 className="page-title">Reports</h1>
+    <div className="pg-wrap">
+      <div className="pg-header">
+        <div className="pg-header-inner">
+          <div>
+            <h1 className="pg-title">Reports</h1>
+            <p className="pg-subtitle">Analyze meal consumption data and trends</p>
+          </div>
+        </div>
+      </div>
+      <div className="pg-body">
 
       <div className="card">
         <div className="card-title">Report Filters</div>
@@ -288,7 +300,6 @@ export default function Reports() {
               : `Date: ${appliedFilters.date}`}
           </span>
         </div>
-
         {loading ? (
           <div className="loading">Loading...</div>
         ) : dailyData ? (
@@ -301,20 +312,91 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {['breakfast', 'lunch', 'dinner'].map(meal => {
-                  return (
-                    <tr key={meal}>
-                      <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{meal}</span></td>
-                      <td>{getMealCount(meal)}</td>
-                    </tr>
-                  );
-                })}
+                {['breakfast', 'lunch', 'dinner'].map((meal) => (
+                  <tr key={meal}>
+                    <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{meal}</span></td>
+                    <td>{getMealCount(meal)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         ) : null}
       </div>
 
+      <div className="card">
+        <div className="flex-between mb-3">
+          <div className="card-title">Worker Readiness</div>
+          <span className="report-meta">Active workers missing recovery or verification data</span>
+        </div>
+        {workerReadinessData ? (
+          <div className="stats-grid" style={{ marginBottom: '16px' }}>
+            <div className="stat-card">
+              <div className="stat-value">{workerReadinessData.summary?.ready_workers || 0}</div>
+              <div className="stat-label">Workers Ready</div>
+            </div>
+            <div className="stat-card danger">
+              <div className="stat-value">{workerReadinessData.summary?.missing_phone || 0}</div>
+              <div className="stat-label">Missing Phone</div>
+            </div>
+            <div className="stat-card danger">
+              <div className="stat-value">{workerReadinessData.summary?.missing_photo || 0}</div>
+              <div className="stat-label">Missing Photo</div>
+            </div>
+            <div className="stat-card danger">
+              <div className="stat-value">{workerReadinessData.summary?.missing_both || 0}</div>
+              <div className="stat-label">Missing Both</div>
+            </div>
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="loading">Loading worker readiness...</div>
+        ) : workerReadinessData ? (
+          <>
+            <div className="alert alert-info" style={{ marginBottom: '16px' }}>
+              This report highlights active workers who still need a phone number for self-service password recovery or a profile photo for vendor-side identity verification.
+            </div>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Worker</th>
+                    <th>Employee Number</th>
+                    <th>Department</th>
+                    <th>Phone</th>
+                    <th>Photo</th>
+                    <th>Gaps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workerReadinessData.workers?.length ? workerReadinessData.workers.map((worker) => (
+                    <tr key={worker.id}>
+                      <td>{worker.name}</td>
+                      <td>{worker.employee_number}</td>
+                      <td>{worker.department || '-'}</td>
+                      <td>
+                        <span className={`badge ${worker.phone_present ? 'badge-success' : 'badge-danger'}`}>
+                          {worker.phone_present ? 'On File' : 'Missing'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge ${worker.photo_present ? 'badge-success' : 'badge-danger'}`}>
+                          {worker.photo_present ? 'On File' : 'Missing'}
+                        </span>
+                      </td>
+                      <td>
+                        {[worker.missing_phone ? 'Phone' : null, worker.missing_photo ? 'Photo' : null].filter(Boolean).join(', ')}
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={6} className="text-center text-muted" style={{ padding: '20px' }}>All active workers have both phone numbers and photos on file</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
+      </div>
       <div className="card">
         <div className="card-title">Transaction Details</div>
         {dailyData?.details?.some((record) => record.has_transaction_link === false) && (
@@ -452,6 +534,7 @@ export default function Reports() {
             </table>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

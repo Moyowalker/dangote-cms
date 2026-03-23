@@ -1,4 +1,6 @@
 /* eslint-disable no-console */
+require('dotenv').config();
+
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const { User, WorkerCategory, EntitlementPolicy } = require('../src/database');

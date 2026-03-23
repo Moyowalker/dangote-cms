@@ -100,18 +100,23 @@ export default function Reconciliation() {
   }), { totalConsumptions: 0, failedAttempts: 0 });
 
   return (
-    <div className="page-container">
-      <div className="flex-between mb-3">
-        <h1 className="page-title">Reconciliation</h1>
-        <input
-          type="date"
-          className="form-control"
-          style={{ width: 'auto' }}
-          aria-label="Reconciliation date"
-          value={selectedDate}
-          onChange={(event) => setSelectedDate(event.target.value)}
-        />
+    <div className="pg-wrap">
+      <div className="pg-header">
+        <div className="pg-header-inner">
+          <div>
+            <h1 className="pg-title">Reconciliation</h1>
+            <p className="pg-subtitle">Match transactions and resolve discrepancies</p>
+          </div>
+          <input
+            type="date"
+            className="form-control pg-header-date"
+            aria-label="Reconciliation date"
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
+          />
+        </div>
       </div>
+      <div className="pg-body">
 
       {error && <div className="alert alert-error">{error}</div>}
 
@@ -303,6 +308,7 @@ export default function Reconciliation() {
         ) : (
           <div className="text-muted">No drilldown data available yet.</div>
         )}
+      </div>
       </div>
     </div>
   );

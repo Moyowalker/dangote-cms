@@ -5,7 +5,7 @@ jest.mock('../src/database');
 const request = require('supertest');
 const bcrypt = require('bcrypt');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, User } = require('../src/database');
+const { initializeDatabase, closeDatabase, User, Employee } = require('../src/database');
 const { resetRequestMetrics } = require('../src/services/requestMetricsService');
 
 beforeAll(async () => {
@@ -156,5 +156,117 @@ describe('Auth Routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.user).toBeDefined();
     expect(res.body.user.username).toBe('admin');
+  });
+
+  test('POST /api/auth/change-password updates the password for the logged-in user', async () => {
+    const password = await bcrypt.hash('change-pass-123', 10);
+    await User.create({ username: 'password.change.user', password, role: 'employee' });
+
+    const agent = request.agent(app);
+    await agent.post('/api/auth/login').send({ username: 'password.change.user', password: 'change-pass-123' });
+
+    const changeRes = await agent.post('/api/auth/change-password').send({
+      current_password: 'change-pass-123',
+      new_password: 'change-pass-456'
+    });
+
+    expect(changeRes.status).toBe(200);
+    expect(changeRes.body.message).toBe('Password changed successfully');
+
+    const reloginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'password.change.user', password: 'change-pass-456' });
+
+    expect(reloginRes.status).toBe(200);
+  });
+
+  test('POST /api/auth/change-password rejects the wrong current password', async () => {
+    const password = await bcrypt.hash('wrong-current-123', 10);
+    await User.create({ username: 'password.reject.user', password, role: 'employee' });
+
+    const agent = request.agent(app);
+    await agent.post('/api/auth/login').send({ username: 'password.reject.user', password: 'wrong-current-123' });
+
+    const changeRes = await agent.post('/api/auth/change-password').send({
+      current_password: 'wrong-password',
+      new_password: 'wrong-current-456'
+    });
+
+    expect(changeRes.status).toBe(401);
+    expect(changeRes.body.code).toBe('INVALID_CREDENTIALS');
+  });
+
+  test('POST /api/auth/password-recovery/verify and /reset let a worker recover access', async () => {
+    const employee = await Employee.create({
+      employee_number: 'EMP-REC-001',
+      name: 'Recovery Worker',
+      department: 'Operations',
+      badge_number: 'BG-REC-001',
+      phone: '+2348012345678'
+    });
+    const password = await bcrypt.hash('old-pass-123', 10);
+    await User.create({
+      username: 'recovery.worker',
+      password,
+      role: 'employee',
+      employee_id: employee.id
+    });
+
+    const verifyRes = await request(app)
+      .post('/api/auth/password-recovery/verify')
+      .send({
+        username: 'recovery.worker',
+        employee_number: 'EMP-REC-001',
+        badge_number: 'BG-REC-001',
+        phone_last4: '5678'
+      });
+
+    expect(verifyRes.status).toBe(200);
+    expect(typeof verifyRes.body.recovery_token).toBe('string');
+
+    const resetRes = await request(app)
+      .post('/api/auth/password-recovery/reset')
+      .send({
+        recovery_token: verifyRes.body.recovery_token,
+        new_password: 'new-pass-123'
+      });
+
+    expect(resetRes.status).toBe(200);
+    expect(resetRes.body.message).toMatch(/password reset successfully/i);
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'recovery.worker', password: 'new-pass-123' });
+
+    expect(loginRes.status).toBe(200);
+  });
+
+  test('POST /api/auth/password-recovery/verify rejects incorrect worker recovery details', async () => {
+    const employee = await Employee.create({
+      employee_number: 'EMP-REC-002',
+      name: 'Recovery Reject Worker',
+      department: 'Operations',
+      badge_number: 'BG-REC-002',
+      phone: '+2348012349999'
+    });
+    const password = await bcrypt.hash('old-pass-456', 10);
+    await User.create({
+      username: 'recovery.reject.worker',
+      password,
+      role: 'employee',
+      employee_id: employee.id
+    });
+
+    const verifyRes = await request(app)
+      .post('/api/auth/password-recovery/verify')
+      .send({
+        username: 'recovery.reject.worker',
+        employee_number: 'EMP-REC-002',
+        badge_number: 'BG-REC-002',
+        phone_last4: '0000'
+      });
+
+    expect(verifyRes.status).toBe(400);
+    expect(verifyRes.body.code).toBe('INVALID_RECOVERY_DETAILS');
   });
 });

@@ -125,6 +125,23 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
     }
   }
 
+  function toPlainDoc(data) {
+    const { save, toJSON, ...rest } = data;
+    return rest;
+  }
+
+  function hydrate(data) {
+    const doc = makeDoc(data);
+    doc.save = async function save() {
+      const next = toPlainDoc(this);
+      checkUnique(next, this.id);
+      const persisted = hydrate(next);
+      store.set(persisted.id, persisted);
+      return persisted;
+    };
+    return doc;
+  }
+
   return {
     _store: store,
 
@@ -149,7 +166,7 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
       );
       const full = { ...resolvedDefaults, ...data };
       checkUnique(full);
-      const doc = makeDoc({ ...full, created_at: new Date().toISOString() });
+      const doc = hydrate({ ...full, created_at: new Date().toISOString() });
       store.set(doc.id, doc);
       return doc;
     },
@@ -159,7 +176,7 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
       if (!existing) return new QueryMock(null);
       const setData = update.$set || update;
       checkUnique(setData, String(id));
-      const updated = makeDoc({ ...existing, ...setData });
+      const updated = hydrate({ ...existing, ...setData });
       store.set(updated.id, updated);
       return new QueryMock(opts.new !== false ? updated : existing);
     },
@@ -174,7 +191,7 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
           ...(update.$setOnInsert || {})
         };
         checkUnique(insertData);
-        existing = makeDoc({ ...insertData, created_at: new Date().toISOString() });
+        existing = hydrate({ ...insertData, created_at: new Date().toISOString() });
         store.set(existing.id, existing);
       }
 
@@ -201,7 +218,7 @@ function createModel(store, uniqueKeys = [], defaults = {}) {
         }
       }
       checkUnique(next, existing.id);
-      const updated = makeDoc(next);
+      const updated = hydrate(next);
       store.set(updated.id, updated);
       return Promise.resolve(opts.new === false ? existing : updated);
     },

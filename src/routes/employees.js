@@ -7,7 +7,10 @@ const {
   createEmployee,
   getEmployeeById,
   updateEmployee,
-  deleteEmployee
+  deleteEmployee,
+  getEmployeePortalAccess,
+  provisionEmployeePortalAccess,
+  revokeEmployeePortalAccess
 } = require('../services/employeeService');
 
 const router = express.Router();
@@ -88,6 +91,36 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     await deleteEmployee(req.params.id);
     res.json({ message: 'Employee deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
+  }
+});
+
+router.get('/:id/portal-access', requireAdmin, async (req, res) => {
+  try {
+    const access = await getEmployeePortalAccess(req.params.id);
+    res.json(access);
+  } catch (err) {
+    console.error(err);
+    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
+  }
+});
+
+router.post('/:id/portal-access', requireAdmin, async (req, res) => {
+  try {
+    const access = await provisionEmployeePortalAccess(req.params.id, req.body);
+    res.status(201).json(access);
+  } catch (err) {
+    console.error(err);
+    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
+  }
+});
+
+router.delete('/:id/portal-access', requireAdmin, async (req, res) => {
+  try {
+    const result = await revokeEmployeePortalAccess(req.params.id);
+    res.json(result);
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');

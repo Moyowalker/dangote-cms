@@ -70,7 +70,7 @@ Known blockers before this can be treated as live-canteen ready:
 - [x] Worker onboarding, edit, suspend, and deactivate actions are fast enough not to block live support
 - [ ] Entitlement policy assignment and corrections are manageable without risky workarounds
 - [~] Reports now support date range, vendor, worker category, status, and failure-reason filters plus transaction-detail review with transaction-reference visibility and missing-link warnings, but cross-transaction investigation support is still limited
-- [~] Reconciliation view now exposes vendor-day discrepancy indicators plus drilldowns for confirmed consumptions, failed attempts, and missing transaction-reference links, but it still lacks fuller missing-confirmation investigation detail
+- [~] Reconciliation view now exposes vendor-day discrepancy indicators plus drilldowns for confirmed consumptions, failed attempts, missing transaction-reference links, and matched-versus-unresolved failed-attempt follow-up status, but broader cross-transaction investigation detail is still limited
 
 ## 7. API and State Management Readiness
 

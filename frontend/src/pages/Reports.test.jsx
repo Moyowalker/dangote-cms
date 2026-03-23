@@ -75,6 +75,33 @@ describe('Reports', () => {
         });
       }
 
+      if (url === '/reports/worker-readiness') {
+        return Promise.resolve({
+          data: {
+            summary: {
+              active_workers: 5,
+              missing_phone: 2,
+              missing_photo: 1,
+              missing_both: 1,
+              ready_workers: 2
+            },
+            workers: [
+              {
+                id: 'readiness-1',
+                name: 'No Phone Worker',
+                employee_number: 'EMP-R1',
+                department: 'Operations',
+                phone_present: false,
+                photo_present: true,
+                missing_phone: true,
+                missing_photo: false
+              }
+            ],
+            total: 1
+          }
+        });
+      }
+
       if (url === '/reports/department') {
         return Promise.resolve({
           data: [
@@ -94,8 +121,11 @@ describe('Reports', () => {
     expect(screen.getByText('Failure Attempts')).toBeInTheDocument();
     expect(screen.getByText('Daily Report')).toBeInTheDocument();
     expect(screen.getByText('Transaction Details')).toBeInTheDocument();
+    expect(screen.getByText('Worker Readiness')).toBeInTheDocument();
     expect(screen.getByText('Department Breakdown')).toBeInTheDocument();
-    expect(screen.getAllByText('Operations')).toHaveLength(2);
+    expect(screen.getByText('No Phone Worker')).toBeInTheDocument();
+    expect(screen.getByText('Workers Ready')).toBeInTheDocument();
+    expect(screen.getAllByText('Operations')).toHaveLength(3);
     expect(screen.getByText('Engineering')).toBeInTheDocument();
     expect(screen.getByText('Ada Worker')).toBeInTheDocument();
     expect(screen.getByText('TXN-REP-001')).toBeInTheDocument();
@@ -129,6 +159,22 @@ describe('Reports', () => {
         });
       }
 
+      if (url === '/reports/worker-readiness') {
+        return Promise.resolve({
+          data: {
+            summary: {
+              active_workers: 0,
+              missing_phone: 0,
+              missing_photo: 0,
+              missing_both: 0,
+              ready_workers: 0
+            },
+            workers: [],
+            total: 0
+          }
+        });
+      }
+
       if (url === '/reports/department') {
         return Promise.resolve({ data: [] });
       }
@@ -139,6 +185,7 @@ describe('Reports', () => {
     render(<Reports />);
 
     expect(await screen.findByText(/no department data/i)).toBeInTheDocument();
+    expect(screen.getByText(/all active workers have both phone numbers and photos on file/i)).toBeInTheDocument();
     expect(screen.getByText(/no transaction details match these filters/i)).toBeInTheDocument();
     expect(screen.getAllByText(/no failure attempts match these filters/i)).toHaveLength(2);
   });
@@ -157,6 +204,33 @@ describe('Reports', () => {
 
       if (url === '/reports/department') {
         return Promise.resolve({ data: [] });
+      }
+
+      if (url === '/reports/worker-readiness') {
+        return Promise.resolve({
+          data: {
+            summary: {
+              active_workers: 10,
+              missing_phone: 3,
+              missing_photo: 2,
+              missing_both: 1,
+              ready_workers: 6
+            },
+            workers: [
+              {
+                id: 'readiness-2',
+                name: 'Filter Gap Worker',
+                employee_number: 'REP200',
+                department: 'Ops',
+                phone_present: false,
+                photo_present: false,
+                missing_phone: true,
+                missing_photo: true
+              }
+            ],
+            total: 1
+          }
+        });
       }
 
       if (url === '/reports/failures' && config?.params?.reason) {

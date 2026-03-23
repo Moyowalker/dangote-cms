@@ -10,6 +10,7 @@ import Tickets from './pages/Tickets';
 import VendorInterface from './pages/VendorInterface';
 import Reports from './pages/Reports';
 import Reconciliation from './pages/Reconciliation';
+import WorkerQrPage from './pages/WorkerQrPage';
 import { VENDOR_ROLES } from './auth/roles';
 
 export default function App() {
@@ -39,6 +40,12 @@ export default function App() {
             <VendorInterface />
           </ProtectedRoute>
         } />
+        <Route path="/my-portal" element={
+          <ProtectedRoute roles={['employee']}>
+            <WorkerQrPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/my-qr" element={<Navigate to="/my-portal" replace />} />
         <Route path="/reports" element={
           <ProtectedRoute roles={['admin']}>
             <Reports />

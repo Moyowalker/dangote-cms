@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const app = require('./app');
 const { initializeDatabase } = require('./database');
 const { reportError } = require('./services/errorMonitoringService');
