@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { EMPLOYEE_ROLE, isVendorRole } from '../auth/roles';
+import BrandLogo from './BrandLogo';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -16,7 +17,9 @@ export default function Navbar() {
 
   return (
     <nav className="navbar">
-      <div className="navbar-brand">🍽️ Dangote CMS</div>
+      <div className="navbar-brand">
+        <BrandLogo compact className="navbar-brand-lockup" />
+      </div>
       <ul className="navbar-nav">
         {user.role !== EMPLOYEE_ROLE && <li><NavLink to="/dashboard">Dashboard</NavLink></li>}
         {user.role === 'admin' && (

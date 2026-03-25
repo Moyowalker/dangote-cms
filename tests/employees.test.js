@@ -219,6 +219,63 @@ describe('Employees Routes', () => {
     expect(loginRes.body.user.employee_id).toBe(createRes.body.id);
   });
 
+  test('POST /api/employees/:id/portal-access resets an existing worker login with a custom username', async () => {
+    const createRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP005RESET',
+      name: 'Portal Reset Worker',
+      department: 'Finance',
+      badge_number: 'BADGE005RESET'
+    });
+
+    const firstPortalRes = await agent.post(`/api/employees/${createRes.body.id}/portal-access`).send({});
+    expect(firstPortalRes.status).toBe(201);
+
+    const secondPortalRes = await agent.post(`/api/employees/${createRes.body.id}/portal-access`).send({
+      username: 'portal.reset.worker'
+    });
+
+    expect(secondPortalRes.status).toBe(201);
+    expect(secondPortalRes.body.username).toBe('portal.reset.worker');
+    expect(secondPortalRes.body.temporary_password).not.toBe(firstPortalRes.body.temporary_password);
+
+    const employeeAgent = request.agent(app);
+    const loginRes = await employeeAgent.post('/api/auth/login').send({
+      username: secondPortalRes.body.username,
+      password: secondPortalRes.body.temporary_password
+    });
+
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.user.employee_id).toBe(createRes.body.id);
+  });
+
+  test('POST /api/employees/:id/portal-access rejects a username already used by another account', async () => {
+    const firstEmployeeRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP005A',
+      name: 'Portal Worker A',
+      department: 'Finance',
+      badge_number: 'BADGE005A'
+    });
+    const secondEmployeeRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP005B',
+      name: 'Portal Worker B',
+      department: 'Finance',
+      badge_number: 'BADGE005B'
+    });
+
+    const firstPortalRes = await agent.post(`/api/employees/${firstEmployeeRes.body.id}/portal-access`).send({
+      username: 'shared.portal.user'
+    });
+    expect(firstPortalRes.status).toBe(201);
+
+    const conflictRes = await agent.post(`/api/employees/${secondEmployeeRes.body.id}/portal-access`).send({
+      username: 'shared.portal.user'
+    });
+
+    expect(conflictRes.status).toBe(409);
+    expect(conflictRes.body.code).toBe('CONFLICT');
+    expect(conflictRes.body.error).toBe('That username is already in use');
+  });
+
   test('DELETE /api/employees/:id/portal-access revokes worker login access', async () => {
     const createRes = await agent.post('/api/employees').send({
       employee_number: 'EMP006',

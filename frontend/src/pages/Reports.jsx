@@ -272,16 +272,16 @@ export default function Reports() {
             <div className="stat-value">{dailyData.total || 0}</div>
             <div className="stat-label">Total Meals</div>
           </div>
-          <div className="stat-card" style={{ borderLeftColor: '#007bff' }}>
-            <div className="stat-value" style={{ color: '#007bff' }}>{getMealCount('breakfast')}</div>
+          <div className="stat-card" style={{ borderLeftColor: 'var(--brand-navy)' }}>
+            <div className="stat-value" style={{ color: 'var(--brand-navy)' }}>{getMealCount('breakfast')}</div>
             <div className="stat-label">Breakfast</div>
           </div>
-          <div className="stat-card" style={{ borderLeftColor: '#28a745' }}>
-            <div className="stat-value" style={{ color: '#28a745' }}>{getMealCount('lunch')}</div>
+          <div className="stat-card" style={{ borderLeftColor: 'var(--brand-coral)' }}>
+            <div className="stat-value" style={{ color: 'var(--brand-coral-deep)' }}>{getMealCount('lunch')}</div>
             <div className="stat-label">Lunch</div>
           </div>
-          <div className="stat-card" style={{ borderLeftColor: '#ffc107' }}>
-            <div className="stat-value" style={{ color: '#ffc107' }}>{getMealCount('dinner')}</div>
+          <div className="stat-card" style={{ borderLeftColor: 'var(--brand-warning)' }}>
+            <div className="stat-value" style={{ color: 'var(--brand-warning)' }}>{getMealCount('dinner')}</div>
             <div className="stat-label">Dinner</div>
           </div>
           <div className="stat-card danger">

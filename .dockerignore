@@ -3,7 +3,8 @@ npm-debug.log
 .git
 .github
 coverage
-frontend
+frontend/node_modules
+frontend/dist
 tests
 docs
 .env

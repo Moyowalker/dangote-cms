@@ -16,6 +16,14 @@ function makeError(status, code, message) {
   return err;
 }
 
+function toBase64Url(buffer) {
+  return buffer
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
 function normalizeLifecycle({ status, active }) {
   let nextStatus = status;
   let nextActive = active;
@@ -369,7 +377,7 @@ async function getEmployeePortalAccess(id) {
 }
 
 function generateTemporaryPassword() {
-  return crypto.randomBytes(6).toString('base64url');
+  return toBase64Url(crypto.randomBytes(9));
 }
 
 async function provisionEmployeePortalAccess(id, payload = {}) {
@@ -405,22 +413,29 @@ async function provisionEmployeePortalAccess(id, payload = {}) {
   }
 
   const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+  try {
+    if (linkedUser) {
+      linkedUser.username = normalizedUsername;
+      linkedUser.password = hashedPassword;
+      linkedUser.password_recovery_token_hash = null;
+      linkedUser.password_recovery_expires_at = null;
+      await linkedUser.save();
+    } else {
+      await User.create({
+        username: normalizedUsername,
+        password: hashedPassword,
+        role: ROLE.EMPLOYEE,
+        employee_id: employee._id,
+        password_recovery_token_hash: null,
+        password_recovery_expires_at: null
+      });
+    }
+  } catch (err) {
+    if (err && err.code === 11000) {
+      throw makeError(409, 'CONFLICT', 'That username is already in use');
+    }
 
-  if (linkedUser) {
-    linkedUser.username = normalizedUsername;
-    linkedUser.password = hashedPassword;
-    linkedUser.password_recovery_token_hash = null;
-    linkedUser.password_recovery_expires_at = null;
-    await linkedUser.save();
-  } else {
-    await User.create({
-      username: normalizedUsername,
-      password: hashedPassword,
-      role: ROLE.EMPLOYEE,
-      employee_id: employee._id,
-      password_recovery_token_hash: null,
-      password_recovery_expires_at: null
-    });
+    throw err;
   }
 
   return {

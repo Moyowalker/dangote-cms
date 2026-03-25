@@ -225,7 +225,7 @@ export default function Workers() {
       });
       setPortalResult(res.data);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to provision worker portal access');
+      alert(err.response?.data?.error || err.message || 'Failed to provision worker portal access');
     } finally {
       setPortalSaving(false);
     }

@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { EMPLOYEE_ROLE, isVendorRole } from '../auth/roles';
 import client from '../api/client';
+import BrandLogo from '../components/BrandLogo';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -127,8 +128,8 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <h1>🍽️ Dangote CMS</h1>
-          <p>Canteen Management System</p>
+          <BrandLogo showTagline />
+          <p className="login-brand-note">Secure meal operations for Dangote teams, vendors, and worker self-service.</p>
         </div>
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
@@ -265,6 +266,7 @@ export default function Login() {
             </div>
           ) : null}
         </div>
+        <div className="login-footer-note">Built and maintained by Emocom Technologies.</div>
       </div>
     </div>
   );

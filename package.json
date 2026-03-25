@@ -10,7 +10,9 @@
     "migrate:worker-identifier": "node scripts/migrate-worker-identifiers.js",
     "seed:nonprod": "node scripts/seed-nonprod.js",
     "deploy:fly": "flyctl deploy --config fly.toml",
-    "deploy:fly:logs": "flyctl logs --config fly.toml"
+    "deploy:fly:logs": "flyctl logs --config fly.toml",
+    "deploy:fly:frontend": "flyctl deploy --config fly.frontend.toml",
+    "deploy:fly:frontend:logs": "flyctl logs --config fly.frontend.toml"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
