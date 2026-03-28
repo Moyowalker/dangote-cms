@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import client from '../api/client';
-import { EMPLOYEE_ROLE, isVendorRole } from '../auth/roles';
+import { EMPLOYEE_ROLE, HR_ROLE, VIEWER_ROLE, isReportViewerRole, isVendorRole } from '../auth/roles';
 
 function sortIndicatorEntries(entriesObject) {
   return Object.entries(entriesObject || {}).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
@@ -32,7 +32,13 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [indicators, setIndicators] = useState(null);
+  const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const isAdmin = user?.role === 'admin';
+  const isHr = user?.role === HR_ROLE;
+  const isViewer = user?.role === VIEWER_ROLE;
+  const isReportViewer = isReportViewerRole(user?.role) && !isAdmin;
 
   if (user?.role === EMPLOYEE_ROLE) {
     return <Navigate to="/my-portal" replace />;
@@ -43,7 +49,7 @@ export default function Dashboard() {
   const endpointHealth = Object.entries(indicators?.operational_indicators?.ticket_endpoint_health || {});
 
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (isAdmin) {
       Promise.all([
         client.get('/dashboard/stats'),
         client.get('/dashboard/indicators')
@@ -51,13 +57,30 @@ export default function Dashboard() {
         .then(([statsRes, indicatorsRes]) => {
           setSummary(statsRes.data);
           setIndicators(indicatorsRes.data);
+          setReadiness(null);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    } else if (isReportViewer) {
+      Promise.all([
+        client.get('/dashboard/stats'),
+        client.get('/dashboard/indicators'),
+        client.get('/reports/worker-readiness')
+      ])
+        .then(([statsRes, indicatorsRes, readinessRes]) => {
+          setSummary(statsRes.data);
+          setIndicators(indicatorsRes.data);
+          setReadiness(readinessRes.data);
         })
         .catch(() => {})
         .finally(() => setLoading(false));
     } else {
+      setSummary(null);
+      setIndicators(null);
+      setReadiness(null);
       setLoading(false);
     }
-  }, [user]);
+  }, [isAdmin, isReportViewer]);
 
   const dateString = new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
@@ -81,7 +104,7 @@ export default function Dashboard() {
       </div>
 
       <div className="dash-content">
-        {user?.role === 'admin' && (
+        {isAdmin && (
           <>
             {loading ? (
               <div className="dash-loading">
@@ -297,7 +320,171 @@ export default function Dashboard() {
           </>
         )}
 
-        {user?.role !== 'admin' && isVendorRole(user?.role) && (
+        {isReportViewer && (
+          <>
+            {loading ? (
+              <div className="dash-loading">
+                <div className="dash-spinner" />
+                <span>Loading operations view...</span>
+              </div>
+            ) : summary ? (
+              <>
+                <div className="dash-stats">
+                  <div className="dash-stat-card" style={{ '--accent': 'var(--brand-navy)' }}>
+                    <div className="dash-stat-icon-wrap" style={{ background: '#e8eefc', color: 'var(--brand-navy)' }}>👥</div>
+                    <div className="dash-stat-body">
+                      <span className="dash-stat-value">{summary.totalEmployees}</span>
+                      <span className="dash-stat-label">Active Workers</span>
+                    </div>
+                  </div>
+                  <div className="dash-stat-card" style={{ '--accent': 'var(--brand-coral)' }}>
+                    <div className="dash-stat-icon-wrap" style={{ background: '#fff1ed', color: 'var(--brand-coral-deep)' }}>🍽️</div>
+                    <div className="dash-stat-body">
+                      <span className="dash-stat-value">{summary.mealsToday}</span>
+                      <span className="dash-stat-label">Meals Today</span>
+                    </div>
+                  </div>
+                  <div className="dash-stat-card" style={{ '--accent': 'var(--brand-info)' }}>
+                    <div className="dash-stat-icon-wrap" style={{ background: '#edf3ff', color: 'var(--brand-info)' }}>✅</div>
+                    <div className="dash-stat-body">
+                      <span className="dash-stat-value">{readiness?.summary?.ready_workers ?? 0}</span>
+                      <span className="dash-stat-label">Ready Workers</span>
+                    </div>
+                  </div>
+                  <div className="dash-stat-card" style={{ '--accent': 'var(--brand-warning)' }}>
+                    <div className="dash-stat-icon-wrap" style={{ background: '#fff4df', color: 'var(--brand-warning)' }}>⚠️</div>
+                    <div className="dash-stat-body">
+                      <span className="dash-stat-value">{readiness?.total ?? 0}</span>
+                      <span className="dash-stat-label">Profiles Needing Attention</span>
+                    </div>
+                  </div>
+                </div>
+
+                {indicators && (
+                  <section className="dash-section">
+                    <h2 className="dash-section-title">
+                      <span className="dash-section-icon">📡</span>
+                      {isHr ? 'HR Operations View' : isViewer ? 'Viewer Operations View' : 'Operations View'}
+                    </h2>
+
+                    <div className="dash-kpi-row">
+                      <div className="dash-kpi-card warning">
+                        <div className="dash-kpi-value">{indicators.risk_indicators?.failed_attempts_today ?? 0}</div>
+                        <div className="dash-kpi-label">Failed Attempts Today</div>
+                        <div className="dash-kpi-bar"><div className="fill" style={{ width: Math.min((indicators.risk_indicators?.failed_attempts_today ?? 0) * 10, 100) + '%' }} /></div>
+                      </div>
+                      <div className="dash-kpi-card danger">
+                        <div className="dash-kpi-value">{indicators.risk_indicators?.duplicate_window_blocks_today ?? 0}</div>
+                        <div className="dash-kpi-label">Duplicate Blocks Today</div>
+                        <div className="dash-kpi-bar"><div className="fill" style={{ width: Math.min((indicators.risk_indicators?.duplicate_window_blocks_today ?? 0) * 10, 100) + '%' }} /></div>
+                      </div>
+                      <div className="dash-kpi-card success">
+                        <div className="dash-kpi-value">{indicators.operational_indicators?.redemptions_today ?? 0}</div>
+                        <div className="dash-kpi-label">Confirmed Redemptions Today</div>
+                        <div className="dash-kpi-bar"><div className="fill" style={{ width: Math.min((indicators.operational_indicators?.redemptions_today ?? 0) / 2, 100) + '%' }} /></div>
+                      </div>
+                    </div>
+
+                    <div className="dash-panels-grid">
+                      <div className="dash-panel">
+                        <h3 className="dash-panel-title">Workforce Readiness</h3>
+                        <div className="dash-chips">
+                          <div className="dash-chip"><span className="dash-chip-dot success" /><span>Ready Workers</span><strong>{readiness?.summary?.ready_workers ?? 0}</strong></div>
+                          <div className="dash-chip alert"><span className="dash-chip-dot warning" /><span>Missing Phone</span><strong>{readiness?.summary?.missing_phone ?? 0}</strong></div>
+                          <div className="dash-chip alert"><span className="dash-chip-dot danger" /><span>Missing Photo</span><strong>{readiness?.summary?.missing_photo ?? 0}</strong></div>
+                        </div>
+                        {readiness?.workers?.length ? (
+                          <div className="dash-readiness-list">
+                            {readiness.workers.slice(0, 6).map((worker) => (
+                              <div key={worker.id} className="dash-readiness-item">
+                                <strong>{worker.name}</strong>
+                                <span>{worker.department || 'No department'}</span>
+                                <span className="text-muted">{worker.missing_phone && worker.missing_photo ? 'Missing phone and photo' : worker.missing_phone ? 'Missing phone' : 'Missing photo'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="dash-empty"><span>All active worker profiles have the required readiness data.</span></div>
+                        )}
+                      </div>
+
+                      <div className="dash-panel">
+                        <h3 className="dash-panel-title">Latency And Stall Visibility</h3>
+                        {endpointHealth.length === 0 ? (
+                          <div className="dash-empty"><span>No endpoint timing data recorded yet.</span></div>
+                        ) : (
+                          <div className="dash-health-grid">
+                            {endpointHealth.map(([opName, metric]) => (
+                              <div key={opName} className={`dash-health-card ${healthCardClass(metric.health_status)}`}>
+                                <div className="dash-health-value">{metric.p95_ms}ms</div>
+                                <div className="dash-health-label">{healthLabel(opName)} P95</div>
+                                <div className="dash-health-meta">Avg {metric.average_ms}ms | Slow {metric.slow_requests} | Active {metric.active_requests} | Stalled {metric.stalled_requests}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="dash-panel">
+                        <h3 className="dash-panel-title">Failure Reasons Today</h3>
+                        {failureReasons.length === 0 ? (
+                          <div className="dash-empty"><span>No failure reasons recorded yet.</span></div>
+                        ) : (
+                          <div className="dash-chips">
+                            {failureReasons.map(([reason, count]) => (
+                              <div key={reason} className="dash-chip alert">
+                                <span className="dash-chip-dot danger" />
+                                <span>{reason}</span>
+                                <strong>{count}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="dash-section">
+                  <h2 className="dash-section-title">
+                    <span className="dash-section-icon">🧭</span>
+                    {isHr ? 'HR Tools' : 'Viewer Tools'}
+                  </h2>
+                  <div className="dash-actions">
+                    {isHr && (
+                      <Link to="/workers" className="dash-action-card">
+                        <div className="dash-action-icon" style={{ background: '#e8eefc', color: 'var(--brand-navy)' }}>👥</div>
+                        <div className="dash-action-body">
+                          <strong>Review Workers</strong>
+                          <span>Inspect records, photos, and readiness gaps</span>
+                        </div>
+                        <svg className="dash-action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                      </Link>
+                    )}
+                    <Link to="/reports" className="dash-action-card">
+                      <div className="dash-action-icon" style={{ background: '#edf3ff', color: 'var(--brand-info)' }}>📊</div>
+                      <div className="dash-action-body">
+                        <strong>View Reports</strong>
+                        <span>Review consumption trends and failures</span>
+                      </div>
+                      <svg className="dash-action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </Link>
+                    <Link to="/reconciliation" className="dash-action-card">
+                      <div className="dash-action-icon" style={{ background: '#fff4df', color: 'var(--brand-warning)' }}>⚖️</div>
+                      <div className="dash-action-body">
+                        <strong>Review Reconciliation</strong>
+                        <span>Inspect discrepancy indicators and drilldowns</span>
+                      </div>
+                      <svg className="dash-action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                    </Link>
+                  </div>
+                </section>
+              </>
+            ) : null}
+          </>
+        )}
+
+        {!isAdmin && !isReportViewer && isVendorRole(user?.role) && (
           <section className="dash-section">
             <h2 className="dash-section-title">
               <span className="dash-section-icon">🍽️</span>

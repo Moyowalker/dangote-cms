@@ -86,6 +86,27 @@ describe('Login', () => {
     expect(await screen.findByText('employee portal screen')).toBeInTheDocument();
   });
 
+  it('sends hr users to the dashboard when there is no preserved route', async () => {
+    const user = userEvent.setup();
+    const login = vi.fn().mockResolvedValue({ role: 'hr' });
+    useAuth.mockReturnValue({ login });
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<div>dashboard screen</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await user.type(screen.getByLabelText('Username'), 'hr-user');
+    await user.type(screen.getByLabelText('Password'), 'secret');
+    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+
+    expect(await screen.findByText('dashboard screen')).toBeInTheDocument();
+  });
+
   it('shows the backend error message when login fails', async () => {
     const user = userEvent.setup();
     const login = vi.fn().mockRejectedValue({ response: { data: { error: 'Invalid credentials' } } });

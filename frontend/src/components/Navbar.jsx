@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { EMPLOYEE_ROLE, isVendorRole } from '../auth/roles';
+import { EMPLOYEE_ROLE, canViewWorkforce, isReportViewerRole, isVendorRole } from '../auth/roles';
 import BrandLogo from './BrandLogo';
 
 export default function Navbar() {
@@ -22,9 +22,11 @@ export default function Navbar() {
       </div>
       <ul className="navbar-nav">
         {user.role !== EMPLOYEE_ROLE && <li><NavLink to="/dashboard">Dashboard</NavLink></li>}
-        {user.role === 'admin' && (
+        {canViewWorkforce(user.role) && (
+          <li><NavLink to="/workers">Workers</NavLink></li>
+        )}
+        {isReportViewerRole(user.role) && (
           <>
-            <li><NavLink to="/workers">Workers</NavLink></li>
             <li><NavLink to="/reports">Reports</NavLink></li>
             <li><NavLink to="/reconciliation">Reconciliation</NavLink></li>
           </>

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import client from '../api/client';
 import WorkerQrModal from '../components/WorkerQrModal';
+import { useAuth } from '../context/AuthContext';
+import { HR_ROLE } from '../auth/roles';
 
 const MAX_WORKER_PHOTO_DATA_URL_LENGTH = 150000;
 
@@ -71,9 +73,11 @@ async function optimizeWorkerPhoto(file) {
 }
 
 export default function Workers() {
+  const { user } = useAuth();
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [readiness, setReadiness] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingWorker, setEditingWorker] = useState(null);
   const [qrWorker, setQrWorker] = useState(null);
@@ -87,6 +91,7 @@ export default function Workers() {
   const [filterDept, setFilterDept] = useState('');
   const [filterActive, setFilterActive] = useState('true');
   const [photoProcessing, setPhotoProcessing] = useState(false);
+  const isHrView = user?.role === HR_ROLE;
 
   const fetchWorkers = useCallback(async () => {
     setLoading(true);
@@ -108,6 +113,34 @@ export default function Workers() {
   }, [filterDept, filterActive]);
 
   useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isHrView) {
+      setReadiness(null);
+      return undefined;
+    }
+
+    async function fetchReadiness() {
+      try {
+        const res = await client.get('/reports/worker-readiness');
+        if (!cancelled) {
+          setReadiness(res.data || null);
+        }
+      } catch {
+        if (!cancelled) {
+          setReadiness(null);
+        }
+      }
+    }
+
+    fetchReadiness();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isHrView]);
 
   function openAddModal() {
     setEditingWorker(null);
@@ -139,9 +172,10 @@ export default function Workers() {
         await client.post('/employees', form);
       }
       setShowModal(false);
+      setError('');
       fetchWorkers();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to save worker');
+      setError(err.response?.data?.error || 'Failed to save worker');
     }
   }
 
@@ -171,9 +205,10 @@ export default function Workers() {
     if (!window.confirm('Delete this worker?')) return;
     try {
       await client.delete(`/employees/${id}`);
+      setError('');
       fetchWorkers();
     } catch (err) {
-      alert('Failed to delete worker');
+      setError(err.response?.data?.error || 'Failed to delete worker');
     }
   }
 
@@ -193,7 +228,7 @@ export default function Workers() {
       setPortalAccess(res.data);
       setPortalForm({ username: res.data?.username || worker.employee_number || '' });
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to load worker portal access');
+      setError(err.response?.data?.error || 'Failed to load worker portal access');
     } finally {
       setPortalLoading(false);
     }
@@ -224,8 +259,9 @@ export default function Workers() {
         worker_name: res.data.worker_name
       });
       setPortalResult(res.data);
+      setError('');
     } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Failed to provision worker portal access');
+      setError(err.response?.data?.error || err.message || 'Failed to provision worker portal access');
     } finally {
       setPortalSaving(false);
     }
@@ -240,8 +276,9 @@ export default function Workers() {
     try {
       await client.delete(`/employees/${portalWorker.id}/portal-access`);
       setPortalAccess({ enabled: false, username: portalWorker.employee_number });
+      setError('');
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to revoke worker portal access');
+      setError(err.response?.data?.error || 'Failed to revoke worker portal access');
     } finally {
       setPortalSaving(false);
     }
@@ -253,14 +290,37 @@ export default function Workers() {
         <div className="pg-header-inner">
           <div>
             <h1 className="pg-title">Workers</h1>
-            <p className="pg-subtitle">Manage employee records and assignments</p>
+            <p className="pg-subtitle">{isHrView ? 'Review employee records and workforce readiness' : 'Manage employee records and assignments'}</p>
           </div>
-          <button className="btn btn-primary" onClick={openAddModal}>+ Add Worker</button>
+          {!isHrView && <button className="btn btn-primary" onClick={openAddModal}>+ Add Worker</button>}
         </div>
       </div>
       <div className="pg-body">
 
       {error && <div className="alert alert-error">{error}</div>}
+
+      {isHrView && <div className="alert alert-info">HR mode is read-only. Review worker records, profile completeness, and readiness issues here while admin retains create, edit, delete, QR, and access-control actions.</div>}
+
+      {isHrView && readiness?.summary && (
+        <div className="stats-grid compact">
+          <div className="stat-card info">
+            <div className="stat-value">{readiness.summary.active_workers ?? 0}</div>
+            <div className="stat-label">Active Workers</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">{readiness.summary.ready_workers ?? 0}</div>
+            <div className="stat-label">Profile Ready</div>
+          </div>
+          <div className="stat-card warning">
+            <div className="stat-value">{readiness.summary.missing_phone ?? 0}</div>
+            <div className="stat-label">Missing Phone</div>
+          </div>
+          <div className="stat-card danger">
+            <div className="stat-value">{readiness.summary.missing_photo ?? 0}</div>
+            <div className="stat-label">Missing Photo</div>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="form-row mb-3">
@@ -290,14 +350,14 @@ export default function Workers() {
                   <th>Name</th>
                   <th>Department</th>
                   <th>Meal Plan</th>
-                  <th>Portal Access</th>
+                  {!isHrView && <th>Portal Access</th>}
                   <th>Status</th>
-                  <th>Actions</th>
+                  {!isHrView && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {workers.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center text-muted" style={{ padding: '20px' }}>No workers found</td></tr>
+                  <tr><td colSpan={isHrView ? 6 : 8} className="text-center text-muted" style={{ padding: '20px' }}>No workers found</td></tr>
                 ) : workers.map(w => (
                   <tr key={w.id}>
                     <td><code>{w.employee_number}</code></td>
@@ -310,16 +370,18 @@ export default function Workers() {
                     </td>
                     <td>{w.department}</td>
                     <td><span className="badge badge-info">{w.meal_plan_name || 'None'}</span></td>
-                    <td><span className="badge badge-secondary">Managed</span></td>
+                    {!isHrView && <td><span className="badge badge-secondary">Managed</span></td>}
                     <td><span className={`badge ${w.active ? 'badge-success' : 'badge-danger'}`}>{w.active ? 'Active' : 'Inactive'}</span></td>
-                    <td>
-                      <div className="flex gap-2">
-                        <button className="btn btn-primary btn-sm" onClick={() => openQrModal(w)} disabled={!w.active}>QR Code</button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openPortalModal(w)}>Portal Access</button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(w)}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDeactivate(w.id)}>Delete</button>
-                      </div>
-                    </td>
+                    {!isHrView && (
+                      <td>
+                        <div className="flex gap-2">
+                          <button className="btn btn-primary btn-sm" onClick={() => openQrModal(w)} disabled={!w.active}>QR Code</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => openPortalModal(w)}>Portal Access</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(w)}>Edit</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDeactivate(w.id)}>Delete</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -329,13 +391,15 @@ export default function Workers() {
       </div>
       </div>
 
-      <WorkerQrModal
-        open={Boolean(qrWorker)}
-        worker={qrWorker}
-        onClose={() => setQrWorker(null)}
-      />
+      {!isHrView && (
+        <WorkerQrModal
+          open={Boolean(qrWorker)}
+          worker={qrWorker}
+          onClose={() => setQrWorker(null)}
+        />
+      )}
 
-      {portalWorker && (
+      {!isHrView && portalWorker && (
         <div className="modal-overlay" onClick={closePortalModal}>
           <div className="modal worker-portal-access-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -395,7 +459,7 @@ export default function Workers() {
         </div>
       )}
 
-      {showModal && (
+      {!isHrView && showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">

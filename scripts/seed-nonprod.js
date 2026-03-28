@@ -3,14 +3,15 @@ require('dotenv').config();
 
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
-const { User, WorkerCategory, EntitlementPolicy } = require('../src/database');
+const { User, Employee, WorkerCategory, EntitlementPolicy } = require('../src/database');
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
 
 async function seedRoles() {
   const users = [
     { username: 'vendor.demo', role: 'vendor' },
-    { username: 'viewer.demo', role: 'viewer' }
+    { username: 'viewer.demo', role: 'viewer' },
+    { username: 'hr.demo', role: 'hr' }
   ];
 
   const password = process.env.SEED_DEFAULT_PASSWORD;
@@ -55,6 +56,39 @@ async function seedEntitlementDefaults() {
       });
     }
   }
+
+  return category;
+}
+
+async function seedEmployeePortalDemo(category) {
+  const password = process.env.SEED_DEFAULT_PASSWORD;
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  let employee = await Employee.findOne({ employee_number: 'EMP-DEMO-001' });
+  if (!employee) {
+    employee = await Employee.create({
+      worker_identifier: 'EMP-DEMO-001',
+      employee_number: 'EMP-DEMO-001',
+      name: 'Employee Demo',
+      department: 'Operations',
+      email: 'employee.demo@dangote.local',
+      phone: '08001234001',
+      badge_number: 'BADGE-DEMO-001',
+      worker_category_id: category?._id || null,
+      status: 'active',
+      active: true
+    });
+  }
+
+  const existing = await User.findOne({ username: 'employee.demo', role: 'employee' });
+  if (!existing) {
+    await User.create({
+      username: 'employee.demo',
+      password: hashedPassword,
+      role: 'employee',
+      employee_id: employee._id
+    });
+  }
 }
 
 async function run() {
@@ -69,7 +103,8 @@ async function run() {
 
   await mongoose.connect(mongoUri);
   await seedRoles();
-  await seedEntitlementDefaults();
+  const category = await seedEntitlementDefaults();
+  await seedEmployeePortalDemo(category);
   await mongoose.disconnect();
   console.log('Non-production seed completed successfully');
 }

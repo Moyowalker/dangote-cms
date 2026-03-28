@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Workers from './Workers';
 import client from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 const { toDataURL } = vi.hoisted(() => ({
   toDataURL: vi.fn()
@@ -24,9 +25,14 @@ vi.mock('../api/client', () => ({
   }
 }));
 
+vi.mock('../context/AuthContext', () => ({
+  useAuth: vi.fn()
+}));
+
 describe('Workers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuth.mockReturnValue({ user: { username: 'admin-user', role: 'admin' } });
     toDataURL.mockResolvedValue('data:image/png;base64,fake');
     window.alert = vi.fn();
     window.confirm = vi.fn(() => true);
@@ -246,5 +252,56 @@ describe('Workers', () => {
 
     expect(await screen.findByText(/temporary password:/i)).toBeInTheDocument();
     expect(screen.getByText(/tempPass12/i)).toBeInTheDocument();
+  });
+
+  it('shows hr users a read-only workforce readiness view', async () => {
+    useAuth.mockReturnValue({ user: { username: 'hr-user', role: 'hr' } });
+
+    client.get
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: '1',
+            employee_number: 'EMP-001',
+            badge_number: 'BG-001',
+            name: 'Ada Worker',
+            department: 'Ops',
+            active: true,
+            meal_plan_name: 'Standard'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        data: {
+          summary: {
+            active_workers: 1,
+            ready_workers: 0,
+            missing_phone: 1,
+            missing_photo: 1
+          },
+          workers: [
+            {
+              id: '1',
+              name: 'Ada Worker',
+              department: 'Ops',
+              missing_phone: true,
+              missing_photo: true
+            }
+          ]
+        }
+      });
+
+    render(<Workers />);
+
+    expect(await screen.findByText(/hr mode is read-only/i)).toBeInTheDocument();
+    expect(screen.getByText('Profile Ready')).toBeInTheDocument();
+    expect(screen.getByText('Missing Phone')).toBeInTheDocument();
+    expect(screen.getByText('Missing Photo')).toBeInTheDocument();
+    expect(screen.getByText('Ada Worker')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add worker/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /portal access/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
+    expect(client.get).toHaveBeenNthCalledWith(1, '/employees', { params: {} });
+    expect(client.get).toHaveBeenNthCalledWith(2, '/reports/worker-readiness');
   });
 });

@@ -11,7 +11,7 @@ import VendorInterface from './pages/VendorInterface';
 import Reports from './pages/Reports';
 import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
-import { VENDOR_ROLES } from './auth/roles';
+import { REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
 
 export default function App() {
   return (
@@ -28,7 +28,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/workers" element={
-              <ProtectedRoute roles={['admin']}>
+              <ProtectedRoute roles={WORKFORCE_VIEW_ROLES}>
                 <Workers />
               </ProtectedRoute>
             } />
@@ -49,12 +49,12 @@ export default function App() {
             } />
             <Route path="/my-qr" element={<Navigate to="/my-portal" replace />} />
             <Route path="/reports" element={
-              <ProtectedRoute roles={['admin']}>
+              <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
                 <Reports />
               </ProtectedRoute>
             } />
             <Route path="/reconciliation" element={
-              <ProtectedRoute roles={['admin']}>
+              <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
                 <Reconciliation />
               </ProtectedRoute>
             } />

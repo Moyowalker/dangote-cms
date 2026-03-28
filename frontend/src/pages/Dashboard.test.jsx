@@ -115,6 +115,85 @@ describe('Dashboard', () => {
     expect(client.get).not.toHaveBeenCalled();
   });
 
+  it('loads the read-only operations dashboard for hr users', async () => {
+    useAuth.mockReturnValue({ user: { username: 'hr-user', role: 'hr' } });
+    client.get
+      .mockResolvedValueOnce({
+        data: {
+          totalEmployees: 42,
+          mealsToday: 160,
+          mealsThisMonth: 2800,
+          activePlans: 4
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          risk_indicators: {
+            failed_attempts_today: 3,
+            duplicate_window_blocks_today: 1,
+            failed_attempts_by_reason: {
+              'Meal already recorded for this employee today': 2
+            }
+          },
+          operational_indicators: {
+            redemptions_today: 160,
+            redemptions_by_location: {
+              'Main Canteen': 100
+            },
+            failed_attempts_by_location: {
+              'Main Canteen': 2
+            },
+            ticket_endpoint_health: {
+              'ticket.validate': {
+                average_ms: 140,
+                p95_ms: 350,
+                slow_requests: 0,
+                active_requests: 0,
+                stalled_requests: 0,
+                health_status: 'normal'
+              }
+            }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          total: 2,
+          summary: {
+            active_workers: 42,
+            ready_workers: 40,
+            missing_phone: 1,
+            missing_photo: 1
+          },
+          workers: [
+            {
+              id: 'emp-1',
+              name: 'Ada Worker',
+              department: 'Ops',
+              missing_phone: true,
+              missing_photo: false
+            }
+          ]
+        }
+      });
+
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('HR Operations View')).toBeInTheDocument();
+    expect(screen.getByText('Workforce Readiness')).toBeInTheDocument();
+    expect(screen.getByText('HR Tools')).toBeInTheDocument();
+    expect(screen.getByText('Ada Worker')).toBeInTheDocument();
+    expect(screen.getByText('Missing phone')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /review workers/i })).toBeInTheDocument();
+    expect(client.get).toHaveBeenNthCalledWith(1, '/dashboard/stats');
+    expect(client.get).toHaveBeenNthCalledWith(2, '/dashboard/indicators');
+    expect(client.get).toHaveBeenNthCalledWith(3, '/reports/worker-readiness');
+  });
+
   it('stops loading cleanly if admin stats fail', async () => {
     useAuth.mockReturnValue({ user: { username: 'admin-user', role: 'admin' } });
     client.get.mockRejectedValue(new Error('stats failed'));
