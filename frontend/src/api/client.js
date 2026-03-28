@@ -17,16 +17,26 @@ const csrfClient = axios.create({
 let csrfToken = null;
 let csrfPromise = null;
 
+function buildCsrfRequestConfig() {
+  return {
+    params: { _t: Date.now() },
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache'
+    }
+  };
+}
+
 function isStateChangingMethod(method) {
   return ['post', 'put', 'patch', 'delete'].includes(String(method || '').toLowerCase());
 }
 
-async function fetchCsrfToken() {
-  if (csrfPromise) {
+async function fetchCsrfToken({ force = false } = {}) {
+  if (csrfPromise && !force) {
     return csrfPromise;
   }
 
-  csrfPromise = csrfClient.get('/csrf-token')
+  csrfPromise = csrfClient.get('/csrf-token', buildCsrfRequestConfig())
     .then((response) => {
       csrfToken = response.data?.csrfToken || null;
       return csrfToken;
@@ -44,6 +54,11 @@ export async function ensureCsrfToken() {
   }
 
   return fetchCsrfToken();
+}
+
+export async function refreshCsrfToken() {
+  csrfToken = null;
+  return fetchCsrfToken({ force: true });
 }
 
 export function clearSessionState() {

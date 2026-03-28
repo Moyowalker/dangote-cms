@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import client, { AUTH_UNAUTHORIZED_EVENT, clearSessionState, ensureCsrfToken } from '../api/client';
+import client, { AUTH_UNAUTHORIZED_EVENT, clearSessionState, ensureCsrfToken, refreshCsrfToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -49,12 +49,13 @@ export function AuthProvider({ children }) {
     const res = await client.post('/auth/login', { username, password });
     const newUser = res.data?.user || null;
     setUser(newUser);
-    await ensureCsrfToken();
+    await refreshCsrfToken();
     return newUser;
   }
 
   async function logout() {
     try {
+      await refreshCsrfToken();
       await client.post('/auth/logout');
     } catch (e) {
       // ignore
