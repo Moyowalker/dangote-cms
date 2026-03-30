@@ -53,9 +53,6 @@ const employeeSchema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
 
-employeeSchema.index({ employee_number: 1 }, { unique: true });
-employeeSchema.index({ worker_identifier: 1 }, { unique: true });
-employeeSchema.index({ badge_number: 1 }, { unique: true });
 employeeSchema.index({ created_at: -1 });
 
 employeeSchema.pre('validate', function syncWorkerIdentifier() {
@@ -84,7 +81,6 @@ const vendorSchema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
 
-vendorSchema.index({ code: 1 }, { unique: true });
 vendorSchema.index({ canteen_location: 1 });
 
 const vendorRestrictionSchema = new mongoose.Schema(
@@ -113,7 +109,6 @@ const transactionSchema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
 
-transactionSchema.index({ transaction_reference: 1 }, { unique: true });
 transactionSchema.index({ vendor_id: 1, transaction_date: 1 });
 transactionSchema.index({ employee_id: 1, transaction_date: 1 });
 
@@ -145,7 +140,6 @@ const qrTokenMetadataSchema = new mongoose.Schema(
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
 );
 
-qrTokenMetadataSchema.index({ token_jti: 1 }, { unique: true });
 qrTokenMetadataSchema.index({ employee_id: 1, expires_at: -1 });
 qrTokenMetadataSchema.index({ expires_at: 1 });
 qrTokenMetadataSchema.index({ consumed_at: 1 });
