@@ -35,8 +35,24 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reconciliation' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Vendor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Scan QR' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'My Portal' })).not.toBeInTheDocument();
+  });
+
+  it('shows scan access for admin users', () => {
+    useAuth.mockReturnValue({
+      user: { username: 'admin.demo', role: 'admin' },
+      logout: vi.fn()
+    });
+
+    render(
+      <MemoryRouter>
+        <Navbar />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('link', { name: 'Tickets' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Scan QR' })).toBeInTheDocument();
   });
 
   it('shows only self-service navigation for employee users', () => {

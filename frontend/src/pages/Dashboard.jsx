@@ -299,6 +299,14 @@ export default function Dashboard() {
                   </div>
                   <svg className="dash-action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
                 </Link>
+                <Link to="/scan" className="dash-action-card">
+                  <div className="dash-action-icon" style={{ background: '#ecfff6', color: 'var(--brand-success)' }}>📷</div>
+                  <div className="dash-action-body">
+                    <strong>Scan Worker QR</strong>
+                    <span>Validate and redeem meals from worker QR codes</span>
+                  </div>
+                  <svg className="dash-action-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </Link>
                 <Link to="/reports" className="dash-action-card">
                   <div className="dash-action-icon" style={{ background: '#edf3ff', color: 'var(--brand-info)' }}>📊</div>
                   <div className="dash-action-body">
@@ -491,8 +499,8 @@ export default function Dashboard() {
               Vendor Actions
             </h2>
             <div className="dash-vendor-cta">
-              <p>Use ticket and vendor tools to validate and record meal consumption.</p>
-              <Link to="/vendor" className="btn btn-primary btn-lg">🍽️ Go to Vendor Interface</Link>
+              <p>Use the scanner to validate worker QR codes and record meal consumption.</p>
+              <Link to="/scan" className="btn btn-primary btn-lg">📷 Open QR Scanner</Link>
             </div>
           </section>
         )}

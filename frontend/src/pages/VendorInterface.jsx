@@ -335,8 +335,8 @@ export default function VendorInterface() {
       <div className="pg-header vendor">
         <div className="pg-header-inner">
           <div>
-            <h1 className="pg-title">Vendor Interface</h1>
-            <p className="pg-subtitle">Validate and record meal redemptions</p>
+            <h1 className="pg-title">QR Scan and Redemption</h1>
+            <p className="pg-subtitle">Scan worker QR codes, validate eligibility, and record meal redemptions</p>
           </div>
         </div>
       </div>
@@ -363,7 +363,7 @@ export default function VendorInterface() {
       <div className="card">
         <div className="vendor-redeem-box">
           <h2 style={{ marginBottom: '8px' }}>Validate and Redeem</h2>
-          <p className="text-muted mb-3">Enter worker badge number and meal type</p>
+          <p className="text-muted mb-3">Use badge lookup or scan a worker QR code, then record the meal redemption.</p>
           <form onSubmit={handleValidate}>
             <div className="vendor-mode-row" role="group" aria-label="Lookup mode">
               <button

@@ -96,6 +96,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('Meal already recorded for this employee today')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /manage workers/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /issue tickets/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /scan worker qr/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /reconciliation/i })).toBeInTheDocument();
     expect(client.get).toHaveBeenCalledWith('/dashboard/stats');
     expect(client.get).toHaveBeenCalledWith('/dashboard/indicators');
@@ -111,7 +112,7 @@ describe('Dashboard', () => {
     );
 
     expect(screen.getByText(/vendor actions/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /go to vendor interface/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open qr scanner/i })).toBeInTheDocument();
     expect(client.get).not.toHaveBeenCalled();
   });
 

@@ -41,7 +41,7 @@ export default function Login() {
       } else if (user?.role === EMPLOYEE_ROLE) {
         navigate('/my-portal', { replace: true });
       } else if (user && isVendorRole(user.role) && user.role !== 'admin') {
-        navigate('/vendor', { replace: true });
+        navigate('/scan', { replace: true });
       } else {
         navigate('/dashboard');
       }

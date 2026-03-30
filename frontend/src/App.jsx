@@ -37,10 +37,13 @@ export default function App() {
                 <Tickets />
               </ProtectedRoute>
             } />
-            <Route path="/vendor" element={
+            <Route path="/scan" element={
               <ProtectedRoute roles={VENDOR_ROLES}>
                 <VendorInterface />
               </ProtectedRoute>
+            } />
+            <Route path="/vendor" element={
+              <Navigate to="/scan" replace />
             } />
             <Route path="/my-portal" element={
               <ProtectedRoute roles={['employee']}>

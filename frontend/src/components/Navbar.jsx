@@ -35,7 +35,7 @@ export default function Navbar() {
           <li><NavLink to="/tickets">Tickets</NavLink></li>
         )}
         {isVendorRole(user.role) && (
-          <li><NavLink to="/vendor">Vendor</NavLink></li>
+          <li><NavLink to="/scan">Scan QR</NavLink></li>
         )}
         {user.role === EMPLOYEE_ROLE && (
           <li><NavLink to="/my-portal">My Portal</NavLink></li>

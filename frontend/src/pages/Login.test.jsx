@@ -53,7 +53,7 @@ describe('Login', () => {
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/vendor" element={<div>vendor screen</div>} />
+          <Route path="/scan" element={<div>scan screen</div>} />
         </Routes>
       </MemoryRouter>
     );
@@ -62,7 +62,7 @@ describe('Login', () => {
     await user.type(screen.getByLabelText('Password'), 'secret');
     await user.click(screen.getByRole('button', { name: 'Sign In' }));
 
-    expect(await screen.findByText('vendor screen')).toBeInTheDocument();
+    expect(await screen.findByText('scan screen')).toBeInTheDocument();
   });
 
   it('sends an employee user to the self-service portal when there is no preserved route', async () => {
