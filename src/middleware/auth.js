@@ -26,7 +26,7 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-function requireStaff(req, res, next) {
+function requireVendorAccess(req, res, next) {
   if (!req.session || !req.session.user) {
     return sendError(res, 401, 'Authentication required', 'AUTH_REQUIRED');
   }
@@ -46,4 +46,6 @@ function requireReportViewer(req, res, next) {
   next();
 }
 
-module.exports = { ROLE, requireAuth, requireAdmin, requireStaff, requireReportViewer };
+const requireStaff = requireVendorAccess;
+
+module.exports = { ROLE, requireAuth, requireAdmin, requireVendorAccess, requireStaff, requireReportViewer };

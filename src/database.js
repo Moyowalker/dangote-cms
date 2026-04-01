@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
+const { canonicalizeRole } = require('./utils/roles');
 
 // Helper: apply common toJSON transform (rename _id → id, remove __v)
 function idTransform(doc, ret) {
@@ -15,7 +16,12 @@ const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['admin', 'vendor', 'viewer', 'hr', 'staff', 'employee'], default: 'viewer' },
+    role: {
+      type: String,
+      enum: ['admin', 'vendor', 'viewer', 'hr', 'staff', 'employee'],
+      default: 'viewer',
+      set: (value) => canonicalizeRole(value)
+    },
     employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
     password_recovery_token_hash: { type: String, default: null },
     password_recovery_expires_at: { type: Date, default: null }
@@ -190,12 +196,24 @@ const mealRecordSchema = new mongoose.Schema(
     // Stored as YYYY-MM-DD string to avoid timezone conversion complexity at the API boundary
     consumption_date: { type: String, required: true },
     consumed_at: { type: Date, default: Date.now },
+    vendor_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Legacy persisted field retained during the vendor_user_id migration.
     staff_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     canteen_location: { type: String, default: 'Main Canteen' },
     notes: { type: String, default: null }
   },
   { toJSON: { transform: idTransform } }
 );
+
+mealRecordSchema.pre('validate', function syncVendorOperatorFields() {
+  if (!this.vendor_user_id && this.staff_id) {
+    this.vendor_user_id = this.staff_id;
+  }
+
+  if (!this.staff_id && this.vendor_user_id) {
+    this.staff_id = this.vendor_user_id;
+  }
+});
 
 // Prevent an employee from having the same meal type twice in one day
 mealRecordSchema.index({ employee_id: 1, meal_type: 1, consumption_date: 1 }, { unique: true });

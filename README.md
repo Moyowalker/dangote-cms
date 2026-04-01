@@ -17,11 +17,16 @@ Web-based canteen management platform for digitized meal operations.
 
 Legacy compatibility note: persisted `staff` users are normalized to `vendor` at the backend API boundary so frontend clients and current documentation consume a single canonical vendor role.
 
+New user writes are also canonicalized to `vendor`, so legacy `staff` is now a read-compatibility concern rather than an actively written role for current backend flows.
+
+Meal records are now on a safe migration path from legacy `staff_id` to canonical `vendor_user_id`: current writes populate both fields, reads prefer the new field and fall back to the old one, and historical rows can be backfilled with `npm run migrate:vendor-operator-field`.
+
 Legacy SQLite backend has been removed. The repository now has a single backend direction.
 
 ## Project Structure
 
 - `src/` - backend source (MongoDB)
+- `src/public/` - legacy static admin UI retained as an optional compatibility surface
 - `frontend/` - React/Vite frontend
 - `tests/` - backend tests
 - `docs/checklists/` - enterprise delivery checklists
@@ -60,6 +65,7 @@ npm run dev
 - `MONGO_URI` - MongoDB connection string
 - `PORT` - backend port (default `3001`)
 - `CORS_ORIGINS` - optional comma-separated allowlist of frontend origins (example: `http://localhost:5173,https://cms.example.com`)
+- `LEGACY_STATIC_UI_ENABLED` - optional toggle for serving the legacy static HTML UI from `src/public` (defaults to `true`; set to `false` to disable it)
 - `QR_TOKEN_SECRET` - HMAC secret used to sign and verify QR validation tokens
 - `DUPLICATE_WINDOW_MINUTES` - optional redemption window guard (default `2`) to block near-simultaneous duplicate attempts
 - `ADMIN_BOOTSTRAP_PASSWORD` - optional initial admin bootstrap password used only when no admin exists
@@ -303,11 +309,36 @@ Initialize worker identifiers for legacy records:
 npm run migrate:worker-identifier
 ```
 
+Backfill canonical vendor operator ids from legacy meal record rows:
+
+```bash
+npm run migrate:vendor-operator-field
+```
+
+Verify whether the meal record vendor operator migration is complete:
+
+```bash
+npm run verify:vendor-operator-field
+```
+
+Use strict verification to fail the command when any legacy-only or mismatched rows remain:
+
+```bash
+npm run verify:vendor-operator-field -- --strict
+```
+
 Seed non-production bootstrap data (requires `SEED_DEFAULT_PASSWORD`):
 
 ```bash
 npm run seed:nonprod
 ```
+
+Recommended rollout for the `staff_id` to `vendor_user_id` transition:
+
+1. Deploy code that dual-writes both fields and reads either field.
+2. Run `npm run migrate:vendor-operator-field` against the target database.
+3. Run `npm run verify:vendor-operator-field -- --strict` until it passes cleanly.
+4. Only then remove legacy read fallbacks and drop `staff_id` in a later migration.
 
 ## Security Notes
 

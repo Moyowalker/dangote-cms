@@ -46,7 +46,20 @@ function getAllowedOrigins() {
   return isProduction ? [] : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 }
 
+function isLegacyStaticUiEnabled() {
+  const configured = process.env.LEGACY_STATIC_UI_ENABLED;
+
+  if (configured === undefined) {
+    return true;
+  }
+
+  return !['0', 'false', 'no', 'off'].includes(String(configured).trim().toLowerCase());
+}
+
 const allowedOrigins = getAllowedOrigins();
+const legacyStaticUiEnabled = isLegacyStaticUiEnabled();
+
+app.locals.legacyStaticUiEnabled = legacyStaticUiEnabled;
 
 app.use((req, res, next) => {
   const requestId = typeof req.headers['x-request-id'] === 'string' && req.headers['x-request-id'].trim()
@@ -189,7 +202,9 @@ const csrfMiddleware = process.env.NODE_ENV === 'test'
   ? (req, res, next) => next()
   : doubleCsrfProtection;
 
-app.use(express.static(path.join(__dirname, 'public')));
+if (legacyStaticUiEnabled) {
+  app.use(express.static(path.join(__dirname, 'public')));
+}
 
 app.get('/api/csrf-token', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

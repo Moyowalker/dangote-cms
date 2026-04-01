@@ -9,14 +9,14 @@ const {
 
 const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
 
-async function getMealPlanAllowance(employee, mealType) {
-  if (!employee.meal_plan_id) {
+async function getMealPlanAllowance(employeeRecord, mealType) {
+  if (!employeeRecord.meal_plan_id) {
     return true;
   }
 
-  const mealPlanId = typeof employee.meal_plan_id === 'object' && employee.meal_plan_id._id
-    ? employee.meal_plan_id._id
-    : employee.meal_plan_id;
+  const mealPlanId = typeof employeeRecord.meal_plan_id === 'object' && employeeRecord.meal_plan_id._id
+    ? employeeRecord.meal_plan_id._id
+    : employeeRecord.meal_plan_id;
   const mealPlan = await MealPlan.findById(mealPlanId);
 
   if (!mealPlan || mealPlan.active === false) {
@@ -26,13 +26,13 @@ async function getMealPlanAllowance(employee, mealType) {
   return Boolean(mealPlan[mealType]);
 }
 
-async function getDailyLimit(employee, mealType) {
-  if (!employee.worker_category_id) {
+async function getDailyLimit(employeeRecord, mealType) {
+  if (!employeeRecord.worker_category_id) {
     return 1;
   }
 
   const policy = await EntitlementPolicy.findOne({
-    worker_category_id: employee.worker_category_id,
+    worker_category_id: employeeRecord.worker_category_id,
     meal_type: mealType,
     active: true
   });
@@ -44,11 +44,11 @@ async function getDailyLimit(employee, mealType) {
   return policy.daily_limit;
 }
 
-async function ensureBalance(employee, mealType, date) {
-  const allowed = await getDailyLimit(employee, mealType);
+async function ensureBalance(employeeRecord, mealType, date) {
+  const allowed = await getDailyLimit(employeeRecord, mealType);
 
   const balance = await WorkerEntitlementBalance.findOneAndUpdate(
-    { employee_id: employee._id, meal_type: mealType, balance_date: date },
+    { employee_id: employeeRecord._id, meal_type: mealType, balance_date: date },
     {
       $setOnInsert: {
         allowed,
@@ -64,8 +64,8 @@ async function ensureBalance(employee, mealType, date) {
   return balance;
 }
 
-async function validateVendorRestrictions(employee, mealType, canteenLocation) {
-  if (!canteenLocation || !employee.worker_category_id) {
+async function validateVendorRestrictions(employeeRecord, mealType, canteenLocation) {
+  if (!canteenLocation || !employeeRecord.worker_category_id) {
     return { ok: true };
   }
 
@@ -82,7 +82,7 @@ async function validateVendorRestrictions(employee, mealType, canteenLocation) {
 
   const allowed = activeRestrictions.some(
     (restriction) =>
-      String(restriction.worker_category_id) === String(employee.worker_category_id)
+      String(restriction.worker_category_id) === String(employeeRecord.worker_category_id)
       && restriction.meal_type === mealType
   );
 
@@ -97,13 +97,13 @@ async function validateVendorRestrictions(employee, mealType, canteenLocation) {
   return { ok: true };
 }
 
-async function validateDuplicateWindow(employee, mealType, date) {
+async function validateDuplicateWindow(employeeRecord, mealType, date) {
   const configured = Number(process.env.DUPLICATE_WINDOW_MINUTES || 2);
   const duplicateWindowMinutes = Number.isFinite(configured) && configured > 0 ? configured : 2;
   const cutoff = new Date(Date.now() - (duplicateWindowMinutes * 60 * 1000));
 
   const recent = await MealRecord.findOne({
-    employee_id: employee._id,
+    employee_id: employeeRecord._id,
     meal_type: mealType,
     consumed_at: { $gte: cutoff }
   });
@@ -123,18 +123,18 @@ async function validateDuplicateWindow(employee, mealType, date) {
   return { ok: true };
 }
 
-async function validateConsumptionEligibility(employee, mealType, date, options = {}) {
+async function validateConsumptionEligibility(employeeRecord, mealType, date, options = {}) {
   if (!VALID_MEAL_TYPES.includes(mealType)) {
     return { ok: false, status: 400, error: `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}` };
   }
 
-  const allowedByPlan = await getMealPlanAllowance(employee, mealType);
+  const allowedByPlan = await getMealPlanAllowance(employeeRecord, mealType);
   if (!allowedByPlan) {
     return { ok: false, status: 403, error: 'Employee meal plan does not allow this meal type' };
   }
 
   const existing = await MealRecord.findOne({
-    employee_id: employee._id,
+    employee_id: employeeRecord._id,
     meal_type: mealType,
     consumption_date: date
   });
@@ -143,17 +143,17 @@ async function validateConsumptionEligibility(employee, mealType, date, options 
     return { ok: false, status: 409, error: 'Meal already recorded for this employee today' };
   }
 
-  const duplicateWindowCheck = await validateDuplicateWindow(employee, mealType, date);
+  const duplicateWindowCheck = await validateDuplicateWindow(employeeRecord, mealType, date);
   if (!duplicateWindowCheck.ok) {
     return duplicateWindowCheck;
   }
 
-  const vendorRestrictionCheck = await validateVendorRestrictions(employee, mealType, options.canteenLocation);
+  const vendorRestrictionCheck = await validateVendorRestrictions(employeeRecord, mealType, options.canteenLocation);
   if (!vendorRestrictionCheck.ok) {
     return vendorRestrictionCheck;
   }
 
-  const balance = await ensureBalance(employee, mealType, date);
+  const balance = await ensureBalance(employeeRecord, mealType, date);
   const remaining = Math.max(balance.allowed - balance.consumed, 0);
 
   if (remaining <= 0) {
@@ -173,10 +173,10 @@ async function validateConsumptionEligibility(employee, mealType, date, options 
   };
 }
 
-async function consumeEntitlement(employee, mealType, date) {
+async function consumeEntitlement(employeeRecord, mealType, date) {
   const updated = await WorkerEntitlementBalance.findOneAndUpdate(
     {
-      employee_id: employee._id,
+      employee_id: employeeRecord._id,
       meal_type: mealType,
       balance_date: date,
       $expr: { $lt: ['$consumed', '$allowed'] }
@@ -201,10 +201,10 @@ async function consumeEntitlement(employee, mealType, date) {
   };
 }
 
-async function rollbackConsumption(employee, mealType, date) {
+async function rollbackConsumption(employeeRecord, mealType, date) {
   await WorkerEntitlementBalance.findOneAndUpdate(
     {
-      employee_id: employee._id,
+      employee_id: employeeRecord._id,
       meal_type: mealType,
       balance_date: date,
       consumed: { $gt: 0 }
@@ -213,24 +213,24 @@ async function rollbackConsumption(employee, mealType, date) {
   );
 }
 
-async function getWorkerMealStatus(employee, mealType, date) {
+async function getEmployeeMealStatus(employeeRecord, mealType, date) {
   if (!VALID_MEAL_TYPES.includes(mealType)) {
     throw new Error(`meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}`);
   }
 
-  const allowedByPlan = await getMealPlanAllowance(employee, mealType);
+  const allowedByPlan = await getMealPlanAllowance(employeeRecord, mealType);
   const existing = await MealRecord.findOne({
-    employee_id: employee._id,
+    employee_id: employeeRecord._id,
     meal_type: mealType,
     consumption_date: date
   });
   const balance = await WorkerEntitlementBalance.findOne({
-    employee_id: employee._id,
+    employee_id: employeeRecord._id,
     meal_type: mealType,
     balance_date: date
   });
 
-  const allowed = balance ? balance.allowed : await getDailyLimit(employee, mealType);
+  const allowed = balance ? balance.allowed : await getDailyLimit(employeeRecord, mealType);
   const consumed = Math.max(balance ? balance.consumed : 0, existing ? 1 : 0);
   const remaining = allowedByPlan ? Math.max(allowed - consumed, 0) : 0;
 
@@ -285,10 +285,13 @@ async function getWorkerMealStatus(employee, mealType, date) {
   };
 }
 
+const getWorkerMealStatus = getEmployeeMealStatus;
+
 module.exports = {
   VALID_MEAL_TYPES,
   validateConsumptionEligibility,
   consumeEntitlement,
   rollbackConsumption,
+  getEmployeeMealStatus,
   getWorkerMealStatus
 };

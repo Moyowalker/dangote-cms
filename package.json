@@ -6,8 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "test": "jest --forceExit",
+    "test": "jest",
     "migrate:worker-identifier": "node scripts/migrate-worker-identifiers.js",
+    "migrate:vendor-operator-field": "node scripts/migrate-vendor-operator-field.js",
+    "verify:vendor-operator-field": "node scripts/verify-vendor-operator-migration.js",
     "seed:nonprod": "node scripts/seed-nonprod.js",
     "deploy:fly": "flyctl deploy --config fly.toml",
     "deploy:fly:logs": "flyctl logs --config fly.toml",

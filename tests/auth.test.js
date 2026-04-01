@@ -92,6 +92,31 @@ describe('Auth Routes', () => {
     expect(res.body.checks.database).toBe('up');
   });
 
+  test('legacy static UI can be disabled explicitly', async () => {
+    const previousValue = process.env.LEGACY_STATIC_UI_ENABLED;
+
+    try {
+      process.env.LEGACY_STATIC_UI_ENABLED = 'false';
+      jest.resetModules();
+      jest.doMock('../src/database');
+
+      const freshApp = require('../src/app');
+      const res = await request(freshApp).get('/dashboard.html');
+
+      expect(freshApp.locals.legacyStaticUiEnabled).toBe(false);
+      expect(res.status).toBe(404);
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.LEGACY_STATIC_UI_ENABLED;
+      } else {
+        process.env.LEGACY_STATIC_UI_ENABLED = previousValue;
+      }
+
+      jest.resetModules();
+      jest.doMock('../src/database');
+    }
+  });
+
   test('GET /api/dashboard/indicators returns operational and risk indicators', async () => {
     const agent = request.agent(app);
     await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });

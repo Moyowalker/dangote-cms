@@ -35,6 +35,22 @@ function getFailureFollowUpStatus({ failure, matchedConsumption }) {
   return consumptionTime >= failureTime ? 'confirmed-after-failure' : 'already-confirmed-before-failure';
 }
 
+function getVendorOperatorIdFromMealRecord(record) {
+  const vendorOperatorId = record.vendor_user_id || record.staff_id;
+  return vendorOperatorId ? String(vendorOperatorId) : 'unknown';
+}
+
+function buildVendorOperatorMealRecordFilter({ date, vendorUserId, canteenLocation }) {
+  return {
+    consumption_date: date,
+    $or: [
+      { vendor_user_id: vendorUserId },
+      { staff_id: vendorUserId }
+    ],
+    canteen_location: canteenLocation
+  };
+}
+
 async function buildVendorDailyReconciliation(date) {
   if (!validateDate(date)) {
     throw makeError('date must be in YYYY-MM-DD format');
@@ -47,8 +63,8 @@ async function buildVendorDailyReconciliation(date) {
   const failureByVendor = new Map();
 
   for (const record of records) {
-    const vendorId = record.staff_id ? String(record.staff_id) : 'unknown';
-    const key = `${vendorId}::${record.canteen_location || 'Main Canteen'}`;
+    const vendorUserId = getVendorOperatorIdFromMealRecord(record);
+    const key = `${vendorUserId}::${record.canteen_location || 'Main Canteen'}`;
     successByVendor.set(key, (successByVendor.get(key) || 0) + 1);
   }
 
@@ -108,11 +124,11 @@ async function buildVendorDailyDrilldown({ date, vendor_user_id, canteen_locatio
   }
 
   const [records, failures] = await Promise.all([
-    MealRecord.find({
-      consumption_date: date,
-      staff_id: normalizedVendorUserId,
-      canteen_location: normalizedLocation
-    }).sort({ consumed_at: -1 }),
+    MealRecord.find(buildVendorOperatorMealRecordFilter({
+      date,
+      vendorUserId: normalizedVendorUserId,
+      canteenLocation: normalizedLocation
+    })).sort({ consumed_at: -1 }),
     AuditLog.find({
       action: 'ticket.consume',
       outcome: 'failure',

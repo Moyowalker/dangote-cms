@@ -188,6 +188,58 @@ describe('Reconciliation and Reporting Aggregation', () => {
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
+  test('GET /api/reconciliation/vendor-daily supports migrated vendor_user_id records without legacy staff_id', async () => {
+    const employee = await Employee.create({
+      employee_number: 'REC005',
+      name: 'Recon Migrated User',
+      department: 'Ops',
+      badge_number: 'RECON-5'
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    await MealRecord.create({
+      employee_id: employee._id,
+      meal_type: 'lunch',
+      status: 'used',
+      consumption_date: today,
+      vendor_user_id: 'vendor-migrated',
+      staff_id: null,
+      canteen_location: 'Main Canteen'
+    });
+
+    await AuditLog.create({
+      actor_user_id: 'vendor-migrated',
+      actor_role: 'vendor',
+      action: 'ticket.consume',
+      entity_type: 'employee',
+      entity_id: employee.id,
+      outcome: 'failure',
+      reason: 'Meal already recorded for this employee today',
+      metadata: {
+        badge_number: 'RECON-5',
+        meal_type: 'lunch',
+        date: today,
+        canteen_location: 'Main Canteen'
+      }
+    });
+
+    const summaryRes = await agent.get(`/api/reconciliation/vendor-daily?date=${today}`);
+    expect(summaryRes.status).toBe(200);
+
+    const target = summaryRes.body.summary.find((entry) => entry.vendor_user_id === 'vendor-migrated');
+    expect(target).toBeDefined();
+    expect(target.total_consumptions).toBe(1);
+    expect(target.failed_attempts).toBe(1);
+
+    const drilldownRes = await agent.get(
+      `/api/reconciliation/vendor-daily/drilldown?date=${today}&vendor_user_id=vendor-migrated&canteen_location=${encodeURIComponent('Main Canteen')}`
+    );
+
+    expect(drilldownRes.status).toBe(200);
+    expect(drilldownRes.body.successful_consumptions).toHaveLength(1);
+    expect(drilldownRes.body.failed_attempts).toHaveLength(1);
+  });
+
   test('GET /api/reports/daily returns aggregation summary and details', async () => {
     await Employee.create({
       employee_number: 'REP001',

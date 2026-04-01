@@ -1,13 +1,13 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { Employee, MealRecord } = require('../database');
-const { requireAuth, requireStaff } = require('../middleware/auth');
+const { requireAuth, requireVendorAccess } = require('../middleware/auth');
 const {
   VALID_MEAL_TYPES,
   validateConsumptionEligibility,
   consumeEntitlement,
   rollbackConsumption,
-  getWorkerMealStatus
+  getEmployeeMealStatus
 } = require('../services/entitlementService');
 const { safeWriteAuditLog } = require('../services/auditService');
 const {
@@ -94,7 +94,7 @@ router.get('/self-service-summary', requireAuth, async (req, res) => {
     }
 
     const mealStatuses = await Promise.all(
-      VALID_MEAL_TYPES.map((mealType) => getWorkerMealStatus(employee, mealType, requestedDate))
+      VALID_MEAL_TYPES.map((mealType) => getEmployeeMealStatus(employee, mealType, requestedDate))
     );
 
     const recentActivityDocs = await MealRecord.find({ employee_id: employee._id })
@@ -216,7 +216,7 @@ router.post('/qr-token', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/validate/:badge_number', requireStaff, async (req, res) => {
+router.get('/validate/:badge_number', requireVendorAccess, async (req, res) => {
   try {
     const { badge_number } = req.params;
     const { meal_type, date, canteen_location } = req.query;
@@ -314,7 +314,7 @@ router.get('/validate/:badge_number', requireStaff, async (req, res) => {
   }
 });
 
-router.post('/validate-token', requireStaff, async (req, res) => {
+router.post('/validate-token', requireVendorAccess, async (req, res) => {
   try {
     const actor = req.session.user;
     const { token, meal_type, date, canteen_location } = req.body || {};
@@ -394,7 +394,7 @@ router.post('/validate-token', requireStaff, async (req, res) => {
   }
 });
 
-router.post('/consume', requireStaff, async (req, res) => {
+router.post('/consume', requireVendorAccess, async (req, res) => {
   try {
     const { badge_number, meal_type } = req.body;
     const actor = req.session.user;
@@ -572,13 +572,15 @@ router.post('/consume', requireStaff, async (req, res) => {
 
     let record = null;
     let transaction = null;
+    const vendorUserId = req.session.user.id;
     try {
       record = await MealRecord.create({
         employee_id: employee._id,
         meal_type: normalizedMealType,
         status: 'used',
         consumption_date: today,
-        staff_id: req.session.user.id,
+        vendor_user_id: vendorUserId,
+        staff_id: vendorUserId,
         canteen_location: canteenLocation,
         notes
       });
@@ -593,7 +595,8 @@ router.post('/consume', requireStaff, async (req, res) => {
           employee_number: employee.employee_number,
           badge_number: employee.badge_number,
           token_jti: verifiedQr?.jti || null,
-          staff_id: req.session.user.id
+          vendor_user_id: vendorUserId,
+          staff_id: vendorUserId
         }
       });
 
@@ -676,7 +679,7 @@ router.post('/consume', requireStaff, async (req, res) => {
   }
 });
 
-router.get('/history', requireStaff, async (req, res) => {
+router.get('/history', requireVendorAccess, async (req, res) => {
   try {
     const { employee_id, date, meal_type } = req.query;
     const filter = {};

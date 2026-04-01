@@ -290,18 +290,26 @@ const AuditLog = createModel(auditLogStore);
 // Enforce compound unique constraint: (employee_id, meal_type, consumption_date)
 const _origMealRecordCreate = MealRecord.create.bind(MealRecord);
 MealRecord.create = async function (data) {
+  const payload = { ...data };
+  if (!payload.vendor_user_id && payload.staff_id) {
+    payload.vendor_user_id = payload.staff_id;
+  }
+  if (!payload.staff_id && payload.vendor_user_id) {
+    payload.staff_id = payload.vendor_user_id;
+  }
+
   const dup = [...mealRecordStore.values()].find(
     (r) =>
-      String(r.employee_id) === String(data.employee_id) &&
-      r.meal_type === data.meal_type &&
-      r.consumption_date === data.consumption_date
+      String(r.employee_id) === String(payload.employee_id) &&
+      r.meal_type === payload.meal_type &&
+      r.consumption_date === payload.consumption_date
   );
   if (dup) {
     const err = new Error('E11000 duplicate key error');
     err.code = 11000;
     throw err;
   }
-  return _origMealRecordCreate(data);
+  return _origMealRecordCreate(payload);
 };
 
 const _origEmployeeCreate = Employee.create.bind(Employee);
