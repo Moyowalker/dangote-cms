@@ -14,6 +14,18 @@ function isValidId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
+function getEmployeeCategoryId(input) {
+  if (!input || typeof input !== 'object') {
+    return undefined;
+  }
+
+  if (input.employee_category_id !== undefined) {
+    return input.employee_category_id;
+  }
+
+  return input.worker_category_id;
+}
+
 async function listWorkerCategories() {
   return WorkerCategory.find().sort({ name: 1 });
 }
@@ -96,8 +108,9 @@ async function deleteWorkerCategory(id) {
 
 async function listEntitlementPolicies(query) {
   const filter = {};
-  if (query.worker_category_id) {
-    filter.worker_category_id = query.worker_category_id;
+  const employeeCategoryId = getEmployeeCategoryId(query);
+  if (employeeCategoryId) {
+    filter.worker_category_id = employeeCategoryId;
   }
   if (query.meal_type) {
     filter.meal_type = query.meal_type;
@@ -109,12 +122,13 @@ async function listEntitlementPolicies(query) {
 }
 
 async function createEntitlementPolicy(payload) {
-  const { worker_category_id, meal_type, daily_limit, active } = payload;
-  if (!worker_category_id || !meal_type) {
-    throw makeError(400, 'VALIDATION_ERROR', 'worker_category_id and meal_type are required');
+  const { meal_type, daily_limit, active } = payload;
+  const employeeCategoryId = getEmployeeCategoryId(payload);
+  if (!employeeCategoryId || !meal_type) {
+    throw makeError(400, 'VALIDATION_ERROR', 'employee_category_id and meal_type are required');
   }
-  if (!isValidId(worker_category_id)) {
-    throw makeError(400, 'VALIDATION_ERROR', 'worker_category_id is invalid');
+  if (!isValidId(employeeCategoryId)) {
+    throw makeError(400, 'VALIDATION_ERROR', 'employee_category_id is invalid');
   }
   if (!VALID_MEAL_TYPES.includes(meal_type)) {
     throw makeError(400, 'VALIDATION_ERROR', `meal_type must be one of: ${VALID_MEAL_TYPES.join(', ')}`);
@@ -123,14 +137,14 @@ async function createEntitlementPolicy(payload) {
     throw makeError(400, 'VALIDATION_ERROR', 'daily_limit must be an integer >= 0');
   }
 
-  const category = await WorkerCategory.findById(worker_category_id);
+  const category = await WorkerCategory.findById(employeeCategoryId);
   if (!category) {
     throw makeError(404, 'NOT_FOUND', 'Worker category not found');
   }
 
   try {
     return await EntitlementPolicy.create({
-      worker_category_id,
+      worker_category_id: employeeCategoryId,
       meal_type,
       daily_limit: daily_limit !== undefined ? Number(daily_limit) : 1,
       active: active !== undefined ? Boolean(active) : true
@@ -186,7 +200,7 @@ async function deleteEntitlementPolicy(id) {
 
 async function assignEmployeeCategory(employeeId, workerCategoryId) {
   if (workerCategoryId !== null && workerCategoryId !== undefined && !isValidId(workerCategoryId)) {
-    throw makeError(400, 'VALIDATION_ERROR', 'worker_category_id is invalid');
+    throw makeError(400, 'VALIDATION_ERROR', 'employee_category_id is invalid');
   }
   if (!isValidId(employeeId)) {
     throw makeError(404, 'NOT_FOUND', 'Employee not found');

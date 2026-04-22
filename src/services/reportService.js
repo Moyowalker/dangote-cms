@@ -71,15 +71,23 @@ function matchesSelectedDate(entryDate, { date, start_date, end_date }) {
   return entryDate === new Date().toISOString().split('T')[0];
 }
 
+function getEmployeeCategoryIdFilter(query) {
+  if (query.employee_category_id) {
+    return query.employee_category_id;
+  }
+
+  return query.worker_category_id;
+}
+
 async function buildDailyReport(query) {
   const {
     date,
     start_date,
     end_date,
     vendor,
-    worker_category_id,
     status
   } = query;
+  const employeeCategoryId = getEmployeeCategoryIdFilter(query);
 
   if (date && !isValidDateString(date)) {
     throw makeError('date must be in YYYY-MM-DD format');
@@ -93,14 +101,14 @@ async function buildDailyReport(query) {
   if (status && !['used', 'voided'].includes(status)) {
     throw makeError('status must be one of: used, voided');
   }
-  if (worker_category_id && !mongoose.Types.ObjectId.isValid(worker_category_id)) {
-    throw makeError('worker_category_id must be a valid id');
+  if (employeeCategoryId && !mongoose.Types.ObjectId.isValid(employeeCategoryId)) {
+    throw makeError('employee_category_id must be a valid id');
   }
 
   const dateFilter = buildDateFilter({ date, start_date, end_date });
   const employeeFilter = {};
-  if (worker_category_id) {
-    employeeFilter.worker_category_id = worker_category_id;
+  if (employeeCategoryId) {
+    employeeFilter.worker_category_id = employeeCategoryId;
   }
 
   let employeeIds = null;

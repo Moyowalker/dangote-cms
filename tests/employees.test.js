@@ -5,7 +5,7 @@ jest.mock('../src/database');
 const request = require('supertest');
 const bcrypt = require('bcrypt');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, MealRecord, User } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord, User, WorkerCategory } = require('../src/database');
 
 let agent;
 
@@ -44,6 +44,23 @@ describe('Employees Routes', () => {
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('John Doe');
     expect(res.body.employee_number).toBe('EMP001');
+    expect(res.body.employee_category_id).toBeNull();
+  });
+
+  test('POST /api/employees accepts employee_category_id as the canonical category field', async () => {
+    const category = await WorkerCategory.create({ code: 'EMP-CREATE', name: 'Create Category' });
+
+    const res = await agent.post('/api/employees').send({
+      employee_number: 'EMP001CAT',
+      name: 'John Category',
+      department: 'Engineering',
+      badge_number: 'BADGE001CAT',
+      employee_category_id: category.id
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.worker_category_id).toBe(category.id);
+    expect(res.body.employee_category_id).toBe(category.id);
   });
 
   test('POST /api/employees accepts a worker photo data URL', async () => {
@@ -114,6 +131,25 @@ describe('Employees Routes', () => {
     const res = await agent.put(`/api/employees/${id}`).send({ name: 'Robert Jones' });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Robert Jones');
+  });
+
+  test('PUT /api/employees/:id accepts employee_category_id as the canonical category field', async () => {
+    const category = await WorkerCategory.create({ code: 'EMP-UPDATE', name: 'Update Category' });
+
+    const createRes = await agent.post('/api/employees').send({
+      employee_number: 'EMP003CAT',
+      name: 'Bob Category',
+      department: 'IT',
+      badge_number: 'BADGE003CAT'
+    });
+
+    const res = await agent.put(`/api/employees/${createRes.body.id}`).send({
+      employee_category_id: category.id
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.worker_category_id).toBe(category.id);
+    expect(res.body.employee_category_id).toBe(category.id);
   });
 
   test('DELETE /api/employees/:id deletes the employee', async () => {

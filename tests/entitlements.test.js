@@ -70,6 +70,21 @@ describe('Entitlement Admin Routes', () => {
     expect(res.status).toBe(201);
     expect(res.body.meal_type).toBe('lunch');
     expect(res.body.daily_limit).toBe(2);
+    expect(res.body.employee_category_id).toBe(category.id);
+  });
+
+  test('POST /api/entitlement-policies accepts employee_category_id as the canonical category field', async () => {
+    const category = await WorkerCategory.create({ code: 'EMP-CAT', name: 'Employee Category' });
+
+    const res = await agent.post('/api/entitlement-policies').send({
+      employee_category_id: category.id,
+      meal_type: 'breakfast',
+      daily_limit: 1
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.employee_category_id).toBe(category.id);
+    expect(res.body.worker_category_id).toBe(category.id);
   });
 
   test('POST /api/entitlement-policies rejects negative daily_limit with consistent error envelope', async () => {
@@ -106,6 +121,19 @@ describe('Entitlement Admin Routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.worker_category_id).toBe(category.id);
+    expect(res.body.employee_category_id).toBe(category.id);
+  });
+
+  test('PUT /api/employees/:id/category accepts employee_category_id as the canonical field', async () => {
+    const category = await WorkerCategory.create({ code: 'TEMP2', name: 'Temp Two' });
+
+    const res = await agent.put(`/api/employees/${employee.id}/category`).send({
+      employee_category_id: category.id
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.worker_category_id).toBe(category.id);
+    expect(res.body.employee_category_id).toBe(category.id);
   });
 
   test('GET /api/entitlement-policies lists existing policies', async () => {
@@ -122,5 +150,22 @@ describe('Entitlement Admin Routes', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBe(1);
     expect(res.body[0].meal_type).toBe('dinner');
+    expect(res.body[0].employee_category_id).toBe(category.id);
+  });
+
+  test('GET /api/entitlement-policies accepts employee_category_id as the canonical filter', async () => {
+    const category = await WorkerCategory.create({ code: 'LINE2', name: 'Line Employee' });
+    await EntitlementPolicy.create({
+      worker_category_id: category.id,
+      meal_type: 'dinner',
+      daily_limit: 1,
+      active: true
+    });
+
+    const res = await agent.get(`/api/entitlement-policies?employee_category_id=${category.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].employee_category_id).toBe(category.id);
   });
 });

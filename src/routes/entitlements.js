@@ -15,6 +15,18 @@ const {
 
 const router = express.Router();
 
+function formatEntitlementPolicy(policyDoc) {
+  const policy = policyDoc.toJSON ? policyDoc.toJSON() : { ...policyDoc };
+  policy.employee_category_id = policy.worker_category_id || null;
+  return policy;
+}
+
+function formatEmployeeCategoryAssignment(employeeDoc) {
+  const employee = employeeDoc.toJSON ? employeeDoc.toJSON() : { ...employeeDoc };
+  employee.employee_category_id = employee.worker_category_id || null;
+  return employee;
+}
+
 router.get('/worker-categories', requireAuth, async (req, res) => {
   try {
     const categories = await listWorkerCategories();
@@ -61,7 +73,7 @@ router.delete('/worker-categories/:id', requireAdmin, async (req, res) => {
 router.get('/entitlement-policies', requireAuth, async (req, res) => {
   try {
     const policies = await listEntitlementPolicies(req.query);
-    res.json(policies.map((p) => p.toJSON()));
+    res.json(policies.map(formatEntitlementPolicy));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
@@ -72,7 +84,7 @@ router.post('/entitlement-policies', requireAdmin, async (req, res) => {
   try {
     const policy = await createEntitlementPolicy(req.body);
 
-    res.status(201).json(policy.toJSON());
+    res.status(201).json(formatEntitlementPolicy(policy));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
@@ -83,7 +95,7 @@ router.put('/entitlement-policies/:id', requireAdmin, async (req, res) => {
   try {
     const updated = await updateEntitlementPolicy(req.params.id, req.body);
 
-    res.json(updated.toJSON());
+    res.json(formatEntitlementPolicy(updated));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
@@ -103,9 +115,12 @@ router.delete('/entitlement-policies/:id', requireAdmin, async (req, res) => {
 
 router.put('/employees/:id/category', requireAdmin, async (req, res) => {
   try {
-    const updated = await assignEmployeeCategory(req.params.id, req.body.worker_category_id);
+    const updated = await assignEmployeeCategory(
+      req.params.id,
+      req.body.employee_category_id !== undefined ? req.body.employee_category_id : req.body.worker_category_id
+    );
 
-    res.json(updated.toJSON());
+    res.json(formatEmployeeCategoryAssignment(updated));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');

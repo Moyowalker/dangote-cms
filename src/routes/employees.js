@@ -36,6 +36,9 @@ function formatEmployee(doc) {
     obj.worker_category_name = null;
   }
 
+  obj.employee_category_id = obj.worker_category_id || null;
+  obj.employee_category_name = obj.worker_category_name || null;
+
   return obj;
 }
 
@@ -60,7 +63,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAdmin, async (req, res) => {
   try {
     const employee = await createEmployee(req.body);
-    res.status(201).json(employee.toJSON());
+    res.status(201).json(formatEmployee(employee));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');

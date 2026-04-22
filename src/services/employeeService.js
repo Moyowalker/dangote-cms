@@ -134,6 +134,18 @@ function validatePhotoDataUrl(photoDataUrl) {
   return normalized;
 }
 
+function getEmployeeCategoryId(input) {
+  if (!input || typeof input !== 'object') {
+    return undefined;
+  }
+
+  if (input.employee_category_id !== undefined) {
+    return input.employee_category_id;
+  }
+
+  return input.worker_category_id;
+}
+
 async function listEmployees({ query, user }) {
   const { search, department } = query;
   const filter = {};
@@ -163,10 +175,10 @@ async function createEmployee(payload) {
     photo_data_url,
     badge_number,
     meal_plan_id,
-    worker_category_id,
     status,
     active
   } = payload;
+  const employeeCategoryId = getEmployeeCategoryId(payload);
 
   if (
     typeof employee_number !== 'string' ||
@@ -189,8 +201,8 @@ async function createEmployee(payload) {
     throw makeError(400, 'VALIDATION_ERROR', 'meal_plan_id is invalid');
   }
 
-  if (worker_category_id !== undefined && worker_category_id !== null && !mongoose.Types.ObjectId.isValid(worker_category_id)) {
-    throw makeError(400, 'VALIDATION_ERROR', 'worker_category_id is invalid');
+  if (employeeCategoryId !== undefined && employeeCategoryId !== null && !mongoose.Types.ObjectId.isValid(employeeCategoryId)) {
+    throw makeError(400, 'VALIDATION_ERROR', 'employee_category_id is invalid');
   }
 
   const lifecycle = normalizeLifecycle({ status, active });
@@ -207,7 +219,7 @@ async function createEmployee(payload) {
       photo_data_url: normalizedPhotoDataUrl === undefined ? null : normalizedPhotoDataUrl,
       badge_number: badge_number.trim(),
       meal_plan_id: meal_plan_id || null,
-      worker_category_id: worker_category_id || null,
+      worker_category_id: employeeCategoryId || null,
       status: lifecycle.status || 'active',
       active: lifecycle.active !== undefined ? lifecycle.active : true
     });
@@ -261,10 +273,10 @@ async function updateEmployee(id, payload) {
     photo_data_url,
     badge_number,
     meal_plan_id,
-    worker_category_id,
     status,
     active
   } = payload;
+  const employeeCategoryId = getEmployeeCategoryId(payload);
 
   const updates = {};
 
@@ -308,11 +320,11 @@ async function updateEmployee(id, payload) {
     updates.meal_plan_id = meal_plan_id;
   }
 
-  if (worker_category_id !== undefined) {
-    if (worker_category_id !== null && !mongoose.Types.ObjectId.isValid(worker_category_id)) {
-      throw makeError(400, 'VALIDATION_ERROR', 'worker_category_id is invalid');
+  if (employeeCategoryId !== undefined) {
+    if (employeeCategoryId !== null && !mongoose.Types.ObjectId.isValid(employeeCategoryId)) {
+      throw makeError(400, 'VALIDATION_ERROR', 'employee_category_id is invalid');
     }
-    updates.worker_category_id = worker_category_id;
+    updates.worker_category_id = employeeCategoryId;
   }
 
   const lifecycle = normalizeLifecycle({ status, active });

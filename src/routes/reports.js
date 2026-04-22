@@ -16,6 +16,38 @@ function hasProfilePhoto(employee) {
   return typeof employee.photo_data_url === 'string' && employee.photo_data_url.trim().length > 0;
 }
 
+function buildEmployeeReadinessPayload(employees) {
+  const employeesNeedingAttention = employees
+    .map((employeeDoc) => {
+      const employee = employeeDoc.toJSON ? employeeDoc.toJSON() : { ...employeeDoc };
+      const phonePresent = hasPhoneNumber(employee);
+      const photoPresent = hasProfilePhoto(employee);
+
+      return {
+        ...employee,
+        phone_present: phonePresent,
+        photo_present: photoPresent,
+        missing_phone: !phonePresent,
+        missing_photo: !photoPresent
+      };
+    })
+    .filter((employee) => employee.missing_phone || employee.missing_photo);
+
+  const summary = {
+    active_employees: employees.length,
+    missing_phone: employeesNeedingAttention.filter((employee) => employee.missing_phone).length,
+    missing_photo: employeesNeedingAttention.filter((employee) => employee.missing_photo).length,
+    missing_both: employeesNeedingAttention.filter((employee) => employee.missing_phone && employee.missing_photo).length,
+    ready_employees: employees.length - employeesNeedingAttention.length
+  };
+
+  return {
+    summary,
+    employees: employeesNeedingAttention,
+    total: employeesNeedingAttention.length
+  };
+}
+
 router.get('/daily', requireReportViewer, async (req, res) => {
   try {
     const report = await buildDailyReport(req.query);
@@ -120,35 +152,26 @@ router.get('/failures', requireReportViewer, async (req, res) => {
   }
 });
 
-router.get('/worker-readiness', requireReportViewer, async (req, res) => {
+router.get(['/worker-readiness', '/employee-readiness'], requireReportViewer, async (req, res) => {
   try {
     const employees = await Employee.find({ active: true }).sort({ name: 1 });
+    const payload = buildEmployeeReadinessPayload(employees);
 
-    const workers = employees
-      .map((employeeDoc) => {
-        const employee = employeeDoc.toJSON ? employeeDoc.toJSON() : { ...employeeDoc };
-        const phonePresent = hasPhoneNumber(employee);
-        const photoPresent = hasProfilePhoto(employee);
+    if (req.path === '/worker-readiness') {
+      return res.json({
+        summary: {
+          active_workers: payload.summary.active_employees,
+          missing_phone: payload.summary.missing_phone,
+          missing_photo: payload.summary.missing_photo,
+          missing_both: payload.summary.missing_both,
+          ready_workers: payload.summary.ready_employees
+        },
+        workers: payload.employees,
+        total: payload.total
+      });
+    }
 
-        return {
-          ...employee,
-          phone_present: phonePresent,
-          photo_present: photoPresent,
-          missing_phone: !phonePresent,
-          missing_photo: !photoPresent
-        };
-      })
-      .filter((employee) => employee.missing_phone || employee.missing_photo);
-
-    const summary = {
-      active_workers: employees.length,
-      missing_phone: workers.filter((employee) => employee.missing_phone).length,
-      missing_photo: workers.filter((employee) => employee.missing_photo).length,
-      missing_both: workers.filter((employee) => employee.missing_phone && employee.missing_photo).length,
-      ready_workers: employees.length - workers.length
-    };
-
-    return res.json({ summary, workers, total: workers.length });
+    return res.json(payload);
   } catch (err) {
     console.error(err);
     return sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
