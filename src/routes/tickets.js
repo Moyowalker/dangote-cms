@@ -61,9 +61,15 @@ function formatSelfServiceEmployee(employee) {
     payload.worker_category_id = employee.worker_category_id._id
       ? employee.worker_category_id._id.toString()
       : employee.worker_category_id.toString();
+    payload.employee_category_name = payload.worker_category_name;
+    payload.employee_category_code = payload.worker_category_code;
+    payload.employee_category_id = payload.worker_category_id;
   } else {
     payload.worker_category_name = null;
     payload.worker_category_code = null;
+    payload.employee_category_name = null;
+    payload.employee_category_code = null;
+    payload.employee_category_id = null;
   }
 
   return payload;

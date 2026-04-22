@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { WorkerCategory, EntitlementPolicy, Employee } = require('../database');
+const { EmployeeCategory, EntitlementPolicy, Employee } = require('../database');
 
 const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
 
@@ -27,7 +27,11 @@ function getEmployeeCategoryId(input) {
 }
 
 async function listWorkerCategories() {
-  return WorkerCategory.find().sort({ name: 1 });
+  return EmployeeCategory.find().sort({ name: 1 });
+}
+
+async function listEmployeeCategories() {
+  return listWorkerCategories();
 }
 
 async function createWorkerCategory(payload) {
@@ -37,7 +41,7 @@ async function createWorkerCategory(payload) {
   }
 
   try {
-    return await WorkerCategory.create({
+    return await EmployeeCategory.create({
       code: code.trim(),
       name: name.trim(),
       description: description || null,
@@ -49,6 +53,10 @@ async function createWorkerCategory(payload) {
     }
     throw err;
   }
+}
+
+async function createEmployeeCategory(payload) {
+  return createWorkerCategory(payload);
 }
 
 async function updateWorkerCategory(id, payload) {
@@ -74,7 +82,7 @@ async function updateWorkerCategory(id, payload) {
   if (active !== undefined) updates.active = Boolean(active);
 
   try {
-    const updated = await WorkerCategory.findByIdAndUpdate(
+    const updated = await EmployeeCategory.findByIdAndUpdate(
       id,
       { $set: updates },
       { new: true, runValidators: true }
@@ -93,17 +101,25 @@ async function updateWorkerCategory(id, payload) {
   }
 }
 
+async function updateEmployeeCategory(id, payload) {
+  return updateWorkerCategory(id, payload);
+}
+
 async function deleteWorkerCategory(id) {
   if (!isValidId(id)) {
     throw makeError(404, 'NOT_FOUND', 'Worker category not found');
   }
 
-  const deleted = await WorkerCategory.findByIdAndDelete(id);
+  const deleted = await EmployeeCategory.findByIdAndDelete(id);
   if (!deleted) {
     throw makeError(404, 'NOT_FOUND', 'Worker category not found');
   }
 
   return deleted;
+}
+
+async function deleteEmployeeCategory(id) {
+  return deleteWorkerCategory(id);
 }
 
 async function listEntitlementPolicies(query) {
@@ -137,7 +153,7 @@ async function createEntitlementPolicy(payload) {
     throw makeError(400, 'VALIDATION_ERROR', 'daily_limit must be an integer >= 0');
   }
 
-  const category = await WorkerCategory.findById(employeeCategoryId);
+  const category = await EmployeeCategory.findById(employeeCategoryId);
   if (!category) {
     throw makeError(404, 'NOT_FOUND', 'Worker category not found');
   }
@@ -207,7 +223,7 @@ async function assignEmployeeCategory(employeeId, workerCategoryId) {
   }
 
   if (workerCategoryId) {
-    const category = await WorkerCategory.findById(workerCategoryId);
+    const category = await EmployeeCategory.findById(workerCategoryId);
     if (!category) {
       throw makeError(404, 'NOT_FOUND', 'Worker category not found');
     }
@@ -229,9 +245,13 @@ async function assignEmployeeCategory(employeeId, workerCategoryId) {
 module.exports = {
   VALID_MEAL_TYPES,
   listWorkerCategories,
+  listEmployeeCategories,
   createWorkerCategory,
+  createEmployeeCategory,
   updateWorkerCategory,
+  updateEmployeeCategory,
   deleteWorkerCategory,
+  deleteEmployeeCategory,
   listEntitlementPolicies,
   createEntitlementPolicy,
   updateEntitlementPolicy,

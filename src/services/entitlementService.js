@@ -3,11 +3,15 @@ const {
   Vendor,
   VendorRestriction,
   EntitlementPolicy,
-  WorkerEntitlementBalance,
+  EmployeeEntitlementBalance,
   MealRecord
 } = require('../database');
 
 const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
+
+function getEmployeeCategoryId(employeeRecord) {
+  return employeeRecord && employeeRecord.worker_category_id ? employeeRecord.worker_category_id : null;
+}
 
 async function getMealPlanAllowance(employeeRecord, mealType) {
   if (!employeeRecord.meal_plan_id) {
@@ -27,12 +31,13 @@ async function getMealPlanAllowance(employeeRecord, mealType) {
 }
 
 async function getDailyLimit(employeeRecord, mealType) {
-  if (!employeeRecord.worker_category_id) {
+  const employeeCategoryId = getEmployeeCategoryId(employeeRecord);
+  if (!employeeCategoryId) {
     return 1;
   }
 
   const policy = await EntitlementPolicy.findOne({
-    worker_category_id: employeeRecord.worker_category_id,
+    worker_category_id: employeeCategoryId,
     meal_type: mealType,
     active: true
   });
@@ -47,7 +52,7 @@ async function getDailyLimit(employeeRecord, mealType) {
 async function ensureBalance(employeeRecord, mealType, date) {
   const allowed = await getDailyLimit(employeeRecord, mealType);
 
-  const balance = await WorkerEntitlementBalance.findOneAndUpdate(
+  const balance = await EmployeeEntitlementBalance.findOneAndUpdate(
     { employee_id: employeeRecord._id, meal_type: mealType, balance_date: date },
     {
       $setOnInsert: {
@@ -65,7 +70,8 @@ async function ensureBalance(employeeRecord, mealType, date) {
 }
 
 async function validateVendorRestrictions(employeeRecord, mealType, canteenLocation) {
-  if (!canteenLocation || !employeeRecord.worker_category_id) {
+  const employeeCategoryId = getEmployeeCategoryId(employeeRecord);
+  if (!canteenLocation || !employeeCategoryId) {
     return { ok: true };
   }
 
@@ -82,7 +88,7 @@ async function validateVendorRestrictions(employeeRecord, mealType, canteenLocat
 
   const allowed = activeRestrictions.some(
     (restriction) =>
-      String(restriction.worker_category_id) === String(employeeRecord.worker_category_id)
+      String(restriction.worker_category_id) === String(employeeCategoryId)
       && restriction.meal_type === mealType
   );
 
@@ -90,7 +96,7 @@ async function validateVendorRestrictions(employeeRecord, mealType, canteenLocat
     return {
       ok: false,
       status: 403,
-      error: 'Vendor restriction does not allow this worker category for the selected meal type'
+      error: 'Vendor restriction does not allow this employee category for the selected meal type'
     };
   }
 
@@ -174,7 +180,7 @@ async function validateConsumptionEligibility(employeeRecord, mealType, date, op
 }
 
 async function consumeEntitlement(employeeRecord, mealType, date) {
-  const updated = await WorkerEntitlementBalance.findOneAndUpdate(
+  const updated = await EmployeeEntitlementBalance.findOneAndUpdate(
     {
       employee_id: employeeRecord._id,
       meal_type: mealType,
@@ -202,7 +208,7 @@ async function consumeEntitlement(employeeRecord, mealType, date) {
 }
 
 async function rollbackConsumption(employeeRecord, mealType, date) {
-  await WorkerEntitlementBalance.findOneAndUpdate(
+  await EmployeeEntitlementBalance.findOneAndUpdate(
     {
       employee_id: employeeRecord._id,
       meal_type: mealType,
@@ -224,7 +230,7 @@ async function getEmployeeMealStatus(employeeRecord, mealType, date) {
     meal_type: mealType,
     consumption_date: date
   });
-  const balance = await WorkerEntitlementBalance.findOne({
+  const balance = await EmployeeEntitlementBalance.findOne({
     employee_id: employeeRecord._id,
     meal_type: mealType,
     balance_date: date

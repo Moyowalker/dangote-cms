@@ -51,11 +51,52 @@ describe('Entitlement Admin Routes', () => {
     expect(res.body.name).toBe('Contractor');
   });
 
+  test('GET /api/employee-categories lists categories through the canonical alias route', async () => {
+    await WorkerCategory.create({ code: 'EMP-LIST', name: 'Employee List Category' });
+
+    const res = await agent.get('/api/employee-categories');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].code).toBe('EMP-LIST');
+    expect(res.body[0].employee_category_name).toBe('Employee List Category');
+  });
+
+  test('POST /api/employee-categories creates category through the canonical alias route', async () => {
+    const res = await agent.post('/api/employee-categories').send({
+      code: 'ECAT',
+      name: 'Employee Category Alias'
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.code).toBe('ECAT');
+    expect(res.body.employee_category_name).toBe('Employee Category Alias');
+  });
+
   test('POST /api/worker-categories rejects duplicate code', async () => {
     await agent.post('/api/worker-categories').send({ code: 'STAFF', name: 'Staff' });
     const res = await agent.post('/api/worker-categories').send({ code: 'STAFF', name: 'Staff B' });
 
     expect(res.status).toBe(409);
+  });
+
+  test('PUT /api/employee-categories/:id updates category through the canonical alias route', async () => {
+    const category = await WorkerCategory.create({ code: 'EUP', name: 'Employee Update' });
+
+    const res = await agent.put(`/api/employee-categories/${category.id}`).send({ name: 'Employee Update Renamed' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Employee Update Renamed');
+    expect(res.body.employee_category_name).toBe('Employee Update Renamed');
+  });
+
+  test('DELETE /api/employee-categories/:id deletes category through the canonical alias route', async () => {
+    const category = await WorkerCategory.create({ code: 'EDEL', name: 'Employee Delete' });
+
+    const res = await agent.delete(`/api/employee-categories/${category.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Employee category deleted successfully');
   });
 
   test('POST /api/entitlement-policies creates policy for category', async () => {

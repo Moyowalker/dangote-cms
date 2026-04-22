@@ -288,10 +288,12 @@ const MealRecord = createModel(mealRecordStore, [], {
   consumed_at: () => new Date()
 });
 const WorkerCategory = createModel(workerCategoryStore, ['code']);
+const EmployeeCategory = WorkerCategory;
 const Vendor = createModel(vendorStore, ['code']);
 const VendorRestriction = createModel(vendorRestrictionStore);
 const EntitlementPolicy = createModel(entitlementPolicyStore);
 const WorkerEntitlementBalance = createModel(workerEntitlementBalanceStore);
+const EmployeeEntitlementBalance = WorkerEntitlementBalance;
 const Transaction = createModel(transactionStore, ['transaction_reference']);
 const ReconciliationRecord = createModel(reconciliationRecordStore);
 const QRTokenMetadata = createModel(qrTokenMetadataStore, ['token_jti']);
@@ -351,10 +353,12 @@ module.exports = {
   Worker,
   MealPlan,
   WorkerCategory,
+  EmployeeCategory,
   Vendor,
   VendorRestriction,
   EntitlementPolicy,
   WorkerEntitlementBalance,
+  EmployeeEntitlementBalance,
   MenuItem,
   MealRecord,
   Transaction,

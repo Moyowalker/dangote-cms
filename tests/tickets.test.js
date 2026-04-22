@@ -247,7 +247,7 @@ describe('Tickets Routes', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
     expect(res.body.code).toBe('VALIDATION_ERROR');
-    expect(res.body.error).toBe('Vendor restriction does not allow this worker category for the selected meal type');
+    expect(res.body.error).toBe('Vendor restriction does not allow this employee category for the selected meal type');
   });
 
   test('POST /api/tickets/consume rejects client-supplied entitlement fields', async () => {
@@ -373,6 +373,8 @@ describe('Tickets Routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.employee.name).toBe('Test Employee');
+    expect(res.body.employee.employee_category_id).toBeNull();
+    expect(res.body.employee.employee_category_name).toBeNull();
     expect(res.body.stats.consumed_today).toBe(1);
     expect(res.body.stats.next_eligible_meal).toBeTruthy();
     expect(res.body.meal_statuses).toHaveLength(3);

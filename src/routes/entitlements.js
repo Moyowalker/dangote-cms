@@ -3,9 +3,13 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendError } = require('../utils/apiResponse');
 const {
   listWorkerCategories,
+  listEmployeeCategories,
   createWorkerCategory,
+  createEmployeeCategory,
   updateWorkerCategory,
+  updateEmployeeCategory,
   deleteWorkerCategory,
+  deleteEmployeeCategory,
   listEntitlementPolicies,
   createEntitlementPolicy,
   updateEntitlementPolicy,
@@ -27,40 +31,57 @@ function formatEmployeeCategoryAssignment(employeeDoc) {
   return employee;
 }
 
-router.get('/worker-categories', requireAuth, async (req, res) => {
+function formatCategory(categoryDoc) {
+  const category = categoryDoc.toJSON ? categoryDoc.toJSON() : { ...categoryDoc };
+  category.employee_category_name = category.name || null;
+  return category;
+}
+
+router.get(['/worker-categories', '/employee-categories'], requireAuth, async (req, res) => {
   try {
-    const categories = await listWorkerCategories();
-    res.json(categories);
+    const categories = req.path === '/employee-categories'
+      ? await listEmployeeCategories()
+      : await listWorkerCategories();
+    res.json(categories.map(formatCategory));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
 
-router.post('/worker-categories', requireAdmin, async (req, res) => {
+router.post(['/worker-categories', '/employee-categories'], requireAdmin, async (req, res) => {
   try {
-    const category = await createWorkerCategory(req.body);
+    const category = req.path === '/employee-categories'
+      ? await createEmployeeCategory(req.body)
+      : await createWorkerCategory(req.body);
 
-    res.status(201).json(category.toJSON());
+    res.status(201).json(formatCategory(category));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
 
-router.put('/worker-categories/:id', requireAdmin, async (req, res) => {
+router.put(['/worker-categories/:id', '/employee-categories/:id'], requireAdmin, async (req, res) => {
   try {
-    const updated = await updateWorkerCategory(req.params.id, req.body);
+    const updated = req.path.startsWith('/employee-categories/')
+      ? await updateEmployeeCategory(req.params.id, req.body)
+      : await updateWorkerCategory(req.params.id, req.body);
 
-    res.json(updated.toJSON());
+    res.json(formatCategory(updated));
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
 
-router.delete('/worker-categories/:id', requireAdmin, async (req, res) => {
+router.delete(['/worker-categories/:id', '/employee-categories/:id'], requireAdmin, async (req, res) => {
   try {
+    if (req.path.startsWith('/employee-categories/')) {
+      await deleteEmployeeCategory(req.params.id);
+      return res.json({ message: 'Employee category deleted successfully' });
+    }
+
     await deleteWorkerCategory(req.params.id);
 
     res.json({ message: 'Worker category deleted successfully' });

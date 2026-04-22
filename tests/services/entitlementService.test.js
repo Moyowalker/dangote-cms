@@ -8,11 +8,11 @@ const {
   Employee,
   MealPlan,
   MealRecord,
-  WorkerCategory,
+  EmployeeCategory,
   Vendor,
   VendorRestriction,
   EntitlementPolicy,
-  WorkerEntitlementBalance
+  EmployeeEntitlementBalance
 } = require('../../src/database');
 
 const {
@@ -28,11 +28,11 @@ describe('Entitlement Service Unit Tests', () => {
 
   beforeEach(async () => {
     await MealRecord.deleteMany({});
-    await WorkerEntitlementBalance.deleteMany({});
+    await EmployeeEntitlementBalance.deleteMany({});
     await EntitlementPolicy.deleteMany({});
     await VendorRestriction.deleteMany({});
     await Vendor.deleteMany({});
-    await WorkerCategory.deleteMany({});
+    await EmployeeCategory.deleteMany({});
     await MealPlan.deleteMany({});
     await Employee.deleteMany({});
   });
@@ -100,7 +100,7 @@ describe('Entitlement Service Unit Tests', () => {
   });
 
   test('supports entitlement deduction and rejects when daily limit is exhausted', async () => {
-    const category = await WorkerCategory.create({
+    const category = await EmployeeCategory.create({
       code: 'UT-CAT',
       name: 'Unit Category'
     });
@@ -135,8 +135,8 @@ describe('Entitlement Service Unit Tests', () => {
   });
 
   test('enforces vendor restriction checks for worker category and meal type', async () => {
-    const allowedCategory = await WorkerCategory.create({ code: 'UT-ALLOW', name: 'Allowed Category' });
-    const blockedCategory = await WorkerCategory.create({ code: 'UT-BLOCK', name: 'Blocked Category' });
+    const allowedCategory = await EmployeeCategory.create({ code: 'UT-ALLOW', name: 'Allowed Category' });
+    const blockedCategory = await EmployeeCategory.create({ code: 'UT-BLOCK', name: 'Blocked Category' });
     const vendor = await Vendor.create({ code: 'VEND-1', name: 'Main Vendor', canteen_location: 'Main Canteen', active: true });
 
     await VendorRestriction.create({
@@ -160,7 +160,7 @@ describe('Entitlement Service Unit Tests', () => {
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe(403);
-    expect(result.error).toBe('Vendor restriction does not allow this worker category for the selected meal type');
+    expect(result.error).toBe('Vendor restriction does not allow this employee category for the selected meal type');
   });
 
   test('blocks near-simultaneous duplicate attempts via duplicate window', async () => {
@@ -183,5 +183,19 @@ describe('Entitlement Service Unit Tests', () => {
     expect(result.ok).toBe(false);
     expect(result.status).toBe(409);
     expect(result.error).toBe('Duplicate redemption attempt blocked by duplicate window');
+  });
+
+  test('exports canonical employee category and balance aliases from the database surface', async () => {
+    const category = await EmployeeCategory.create({ code: 'UT-ALIAS', name: 'Alias Category' });
+    const balance = await EmployeeEntitlementBalance.create({
+      employee_id: '000000000000000000000001',
+      meal_type: 'lunch',
+      balance_date: '2026-03-22',
+      allowed: 1,
+      consumed: 0
+    });
+
+    expect(category.code).toBe('UT-ALIAS');
+    expect(balance.meal_type).toBe('lunch');
   });
 });

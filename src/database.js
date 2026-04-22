@@ -270,10 +270,12 @@ const MealPlan = mongoose.model('MealPlan', mealPlanSchema);
 const Employee = mongoose.model('Employee', employeeSchema);
 const Worker = mongoose.model('Worker', employeeSchema, 'employees');
 const WorkerCategory = mongoose.model('WorkerCategory', workerCategorySchema);
+const EmployeeCategory = WorkerCategory;
 const Vendor = mongoose.model('Vendor', vendorSchema);
 const VendorRestriction = mongoose.model('VendorRestriction', vendorRestrictionSchema);
 const EntitlementPolicy = mongoose.model('EntitlementPolicy', entitlementPolicySchema);
 const WorkerEntitlementBalance = mongoose.model('WorkerEntitlementBalance', workerEntitlementBalanceSchema);
+const EmployeeEntitlementBalance = WorkerEntitlementBalance;
 const MenuItem = mongoose.model('MenuItem', menuItemSchema);
 const MealRecord = mongoose.model('MealRecord', mealRecordSchema);
 const Transaction = mongoose.model('Transaction', transactionSchema);
@@ -307,10 +309,12 @@ module.exports = {
   Employee,
   Worker,
   WorkerCategory,
+  EmployeeCategory,
   Vendor,
   VendorRestriction,
   EntitlementPolicy,
   WorkerEntitlementBalance,
+  EmployeeEntitlementBalance,
   MenuItem,
   MealRecord,
   Transaction,
