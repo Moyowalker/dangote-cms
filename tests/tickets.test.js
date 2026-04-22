@@ -53,6 +53,61 @@ afterAll(async () => {
 });
 
 describe('Tickets Routes', () => {
+  test('POST /api/tickets/consume stops writing legacy staff_id when cutover flag is disabled', async () => {
+    const previousValue = process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+
+    try {
+      process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED = 'false';
+      jest.resetModules();
+      jest.doMock('../src/database');
+
+      const freshRequest = require('supertest');
+      const freshApp = require('../src/app');
+      const freshDatabase = require('../src/database');
+      const {
+        initializeDatabase: initializeFreshDatabase,
+        closeDatabase: closeFreshDatabase,
+        Employee: FreshEmployee,
+        MealRecord: FreshMealRecord
+      } = freshDatabase;
+
+      await initializeFreshDatabase();
+
+      const freshAgent = freshRequest.agent(freshApp);
+      await freshAgent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
+
+      const employee = await FreshEmployee.create({
+        employee_number: 'EMP-CUTOVER-001',
+        name: 'Cutover Employee',
+        department: 'Ops',
+        badge_number: 'CUTOVER-1'
+      });
+
+      const consumeRes = await freshAgent.post('/api/tickets/consume').send({
+        badge_number: employee.badge_number,
+        meal_type: 'lunch',
+        canteen_location: 'Main Canteen'
+      });
+
+      expect(consumeRes.status).toBe(201);
+
+      const storedRecord = await FreshMealRecord.findOne({ employee_id: employee._id, meal_type: 'lunch' });
+      expect(String(storedRecord.vendor_user_id)).toBe(String(consumeRes.body.record.vendor_user_id));
+      expect(storedRecord.staff_id).toBeNull();
+
+      await closeFreshDatabase();
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+      } else {
+        process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED = previousValue;
+      }
+
+      jest.resetModules();
+      jest.doMock('../src/database');
+    }
+  });
+
   test('GET /api/tickets/validate/:badge returns 404 for unknown badge', async () => {
     const res = await agent.get('/api/tickets/validate/UNKNOWN_BADGE');
     expect(res.status).toBe(404);

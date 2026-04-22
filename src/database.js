@@ -2,6 +2,16 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const { canonicalizeRole } = require('./utils/roles');
 
+function isLegacyStaffIdFallbackEnabled() {
+  const configured = process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+
+  if (configured === undefined) {
+    return true;
+  }
+
+  return !['0', 'false', 'no', 'off'].includes(String(configured).trim().toLowerCase());
+}
+
 // Helper: apply common toJSON transform (rename _id → id, remove __v)
 function idTransform(doc, ret) {
   ret.id = ret._id.toString();
@@ -210,7 +220,7 @@ mealRecordSchema.pre('validate', function syncVendorOperatorFields() {
     this.vendor_user_id = this.staff_id;
   }
 
-  if (!this.staff_id && this.vendor_user_id) {
+  if (isLegacyStaffIdFallbackEnabled() && !this.staff_id && this.vendor_user_id) {
     this.staff_id = this.vendor_user_id;
   }
 });

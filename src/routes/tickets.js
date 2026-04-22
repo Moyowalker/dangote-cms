@@ -29,6 +29,16 @@ const { ROLE, canonicalizeRole } = require('../utils/roles');
 
 const router = express.Router();
 
+function isLegacyStaffIdFallbackEnabled() {
+  const configured = process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+
+  if (configured === undefined) {
+    return true;
+  }
+
+  return !['0', 'false', 'no', 'off'].includes(String(configured).trim().toLowerCase());
+}
+
 function isIsoDateString(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -573,6 +583,7 @@ router.post('/consume', requireVendorAccess, async (req, res) => {
     let record = null;
     let transaction = null;
     const vendorUserId = req.session.user.id;
+    const legacyStaffIdFallbackEnabled = isLegacyStaffIdFallbackEnabled();
     try {
       record = await MealRecord.create({
         employee_id: employee._id,
@@ -580,7 +591,7 @@ router.post('/consume', requireVendorAccess, async (req, res) => {
         status: 'used',
         consumption_date: today,
         vendor_user_id: vendorUserId,
-        staff_id: vendorUserId,
+        staff_id: legacyStaffIdFallbackEnabled ? vendorUserId : null,
         canteen_location: canteenLocation,
         notes
       });
@@ -596,7 +607,7 @@ router.post('/consume', requireVendorAccess, async (req, res) => {
           badge_number: employee.badge_number,
           token_jti: verifiedQr?.jti || null,
           vendor_user_id: vendorUserId,
-          staff_id: vendorUserId
+          staff_id: legacyStaffIdFallbackEnabled ? vendorUserId : null
         }
       });
 

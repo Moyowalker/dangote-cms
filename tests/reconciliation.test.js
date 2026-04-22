@@ -240,6 +240,65 @@ describe('Reconciliation and Reporting Aggregation', () => {
     expect(drilldownRes.body.failed_attempts).toHaveLength(1);
   });
 
+  test('GET /api/reconciliation/vendor-daily ignores legacy staff_id-only rows when cutover flag is disabled', async () => {
+    const previousValue = process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+
+    try {
+      process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED = 'false';
+      jest.resetModules();
+      jest.doMock('../src/database');
+
+      const freshRequest = require('supertest');
+      const freshApp = require('../src/app');
+      const freshDatabase = require('../src/database');
+      const {
+        initializeDatabase: initializeFreshDatabase,
+        closeDatabase: closeFreshDatabase,
+        Employee: FreshEmployee,
+        MealRecord: FreshMealRecord
+      } = freshDatabase;
+
+      await initializeFreshDatabase();
+
+      const freshAgent = freshRequest.agent(freshApp);
+      await freshAgent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
+
+      const employee = await FreshEmployee.create({
+        employee_number: 'REC006',
+        name: 'Recon Legacy Only User',
+        department: 'Ops',
+        badge_number: 'RECON-6'
+      });
+
+      const today = new Date().toISOString().split('T')[0];
+      const legacyOnlyRecord = await FreshMealRecord.create({
+        employee_id: employee._id,
+        meal_type: 'lunch',
+        status: 'used',
+        consumption_date: today,
+        vendor_user_id: null,
+        staff_id: 'legacy-only-vendor',
+        canteen_location: 'Main Canteen'
+      });
+      legacyOnlyRecord.vendor_user_id = null;
+
+      const summaryRes = await freshAgent.get(`/api/reconciliation/vendor-daily?date=${today}`);
+      expect(summaryRes.status).toBe(200);
+      expect(summaryRes.body.summary.find((entry) => entry.vendor_user_id === 'legacy-only-vendor')).toBeUndefined();
+
+      await closeFreshDatabase();
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+      } else {
+        process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED = previousValue;
+      }
+
+      jest.resetModules();
+      jest.doMock('../src/database');
+    }
+  });
+
   test('GET /api/reports/daily returns aggregation summary and details', async () => {
     await Employee.create({
       employee_number: 'REP001',

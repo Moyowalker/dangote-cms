@@ -21,6 +21,8 @@ New user writes are also canonicalized to `vendor`, so legacy `staff` is now a r
 
 Meal records are now on a safe migration path from legacy `staff_id` to canonical `vendor_user_id`: current writes populate both fields, reads prefer the new field and fall back to the old one, and historical rows can be backfilled with `npm run migrate:vendor-operator-field`.
 
+Set `LEGACY_STAFF_ID_FALLBACK_ENABLED=false` only after strict migration verification passes to stop writing legacy `staff_id` and stop reading staff-only historical rows.
+
 Legacy SQLite backend has been removed. The repository now has a single backend direction.
 
 ## Project Structure
@@ -65,6 +67,7 @@ npm run dev
 - `MONGO_URI` - MongoDB connection string
 - `PORT` - backend port (default `3001`)
 - `CORS_ORIGINS` - optional comma-separated allowlist of frontend origins (example: `http://localhost:5173,https://cms.example.com`)
+- `LEGACY_STAFF_ID_FALLBACK_ENABLED` - optional temporary migration flag for the `staff_id` to `vendor_user_id` cutover (defaults to `true`; set to `false` only after strict migration verification passes)
 - `LEGACY_STATIC_UI_ENABLED` - optional toggle for serving the legacy static HTML UI from `src/public` (defaults to `true`; set to `false` to disable it)
 - `QR_TOKEN_SECRET` - HMAC secret used to sign and verify QR validation tokens
 - `DUPLICATE_WINDOW_MINUTES` - optional redemption window guard (default `2`) to block near-simultaneous duplicate attempts
@@ -338,7 +341,8 @@ Recommended rollout for the `staff_id` to `vendor_user_id` transition:
 1. Deploy code that dual-writes both fields and reads either field.
 2. Run `npm run migrate:vendor-operator-field` against the target database.
 3. Run `npm run verify:vendor-operator-field -- --strict` until it passes cleanly.
-4. Only then remove legacy read fallbacks and drop `staff_id` in a later migration.
+4. Set `LEGACY_STAFF_ID_FALLBACK_ENABLED=false` in the target environment.
+5. Only then remove legacy read fallbacks and drop `staff_id` in a later migration.
 
 ## Security Notes
 

@@ -1,5 +1,15 @@
 const { MealRecord, AuditLog, Employee, Transaction } = require('../database');
 
+function isLegacyStaffIdFallbackEnabled() {
+  const configured = process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+
+  if (configured === undefined) {
+    return true;
+  }
+
+  return !['0', 'false', 'no', 'off'].includes(String(configured).trim().toLowerCase());
+}
+
 function makeError(message, status = 400, code = 'VALIDATION_ERROR') {
   const err = new Error(message);
   err.status = status;
@@ -36,18 +46,31 @@ function getFailureFollowUpStatus({ failure, matchedConsumption }) {
 }
 
 function getVendorOperatorIdFromMealRecord(record) {
-  const vendorOperatorId = record.vendor_user_id || record.staff_id;
+  const vendorOperatorId = isLegacyStaffIdFallbackEnabled()
+    ? (record.vendor_user_id || record.staff_id)
+    : record.vendor_user_id;
   return vendorOperatorId ? String(vendorOperatorId) : 'unknown';
 }
 
 function buildVendorOperatorMealRecordFilter({ date, vendorUserId, canteenLocation }) {
-  return {
+  const baseFilter = {
     consumption_date: date,
+    canteen_location: canteenLocation
+  };
+
+  if (!isLegacyStaffIdFallbackEnabled()) {
+    return {
+      ...baseFilter,
+      vendor_user_id: vendorUserId
+    };
+  }
+
+  return {
+    ...baseFilter,
     $or: [
       { vendor_user_id: vendorUserId },
       { staff_id: vendorUserId }
-    ],
-    canteen_location: canteenLocation
+    ]
   };
 }
 

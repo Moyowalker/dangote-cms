@@ -9,6 +9,16 @@
 
 const bcrypt = require('bcrypt');
 
+function isLegacyStaffIdFallbackEnabled() {
+  const configured = process.env.LEGACY_STAFF_ID_FALLBACK_ENABLED;
+
+  if (configured === undefined) {
+    return true;
+  }
+
+  return !['0', 'false', 'no', 'off'].includes(String(configured).trim().toLowerCase());
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 let _idSeq = 1;
@@ -294,7 +304,7 @@ MealRecord.create = async function (data) {
   if (!payload.vendor_user_id && payload.staff_id) {
     payload.vendor_user_id = payload.staff_id;
   }
-  if (!payload.staff_id && payload.vendor_user_id) {
+  if (isLegacyStaffIdFallbackEnabled() && !payload.staff_id && payload.vendor_user_id) {
     payload.staff_id = payload.vendor_user_id;
   }
 
