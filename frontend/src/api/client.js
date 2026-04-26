@@ -2,7 +2,29 @@ import axios from 'axios';
 
 export const AUTH_UNAUTHORIZED_EVENT = 'dangote-auth-unauthorized';
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+function normalizeApiBaseUrl(value) {
+  const fallback = '/api';
+  const raw = String(value || fallback).trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  const trimmed = raw.replace(/\/+$/, '');
+
+  // Keep local relative usage unchanged.
+  if (trimmed === '/api') {
+    return '/api';
+  }
+
+  // If caller passes an absolute backend origin (without /api), append it.
+  if (/^https?:\/\//i.test(trimmed)) {
+    return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+  }
+
+  return trimmed;
+}
+
+const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 const client = axios.create({
   baseURL: apiBaseUrl,
