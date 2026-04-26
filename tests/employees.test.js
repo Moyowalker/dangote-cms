@@ -5,7 +5,7 @@ jest.mock('../src/database');
 const request = require('supertest');
 const bcrypt = require('bcrypt');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, MealRecord, User, WorkerCategory } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord, User, EmployeeCategory } = require('../src/database');
 
 let agent;
 
@@ -44,11 +44,12 @@ describe('Employees Routes', () => {
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('John Doe');
     expect(res.body.employee_number).toBe('EMP001');
+    expect(res.body.employee_identifier).toBe('EMP001');
     expect(res.body.employee_category_id).toBeNull();
   });
 
   test('POST /api/employees accepts employee_category_id as the canonical category field', async () => {
-    const category = await WorkerCategory.create({ code: 'EMP-CREATE', name: 'Create Category' });
+    const category = await EmployeeCategory.create({ code: 'EMP-CREATE', name: 'Create Category' });
 
     const res = await agent.post('/api/employees').send({
       employee_number: 'EMP001CAT',
@@ -63,7 +64,7 @@ describe('Employees Routes', () => {
     expect(res.body.employee_category_id).toBe(category.id);
   });
 
-  test('POST /api/employees accepts a worker photo data URL', async () => {
+  test('POST /api/employees accepts an employee photo data URL', async () => {
     const res = await agent.post('/api/employees').send({
       employee_number: 'EMP001PHOTO',
       name: 'John Photo',
@@ -76,7 +77,7 @@ describe('Employees Routes', () => {
     expect(res.body.photo_data_url).toBe('data:image/png;base64,ZmFrZV9pbWFnZQ==');
   });
 
-  test('PUT /api/employees rejects an invalid worker photo payload', async () => {
+  test('PUT /api/employees rejects an invalid employee photo payload', async () => {
     const createRes = await agent.post('/api/employees').send({
       employee_number: 'EMP003PHOTO',
       name: 'Photo Reject',
@@ -118,6 +119,7 @@ describe('Employees Routes', () => {
     const res = await agent.get(`/api/employees/${id}`);
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Jane Smith');
+    expect(res.body.employee_identifier).toBe('EMP002');
   });
 
   test('PUT /api/employees/:id updates the employee', async () => {
@@ -134,7 +136,7 @@ describe('Employees Routes', () => {
   });
 
   test('PUT /api/employees/:id accepts employee_category_id as the canonical category field', async () => {
-    const category = await WorkerCategory.create({ code: 'EMP-UPDATE', name: 'Update Category' });
+    const category = await EmployeeCategory.create({ code: 'EMP-UPDATE', name: 'Update Category' });
 
     const createRes = await agent.post('/api/employees').send({
       employee_number: 'EMP003CAT',
@@ -228,7 +230,7 @@ describe('Employees Routes', () => {
     expect(res.body.pagination.total).toBe(2);
   });
 
-  test('POST /api/employees/:id/portal-access provisions worker login details', async () => {
+  test('POST /api/employees/:id/portal-access provisions employee login details', async () => {
     const createRes = await agent.post('/api/employees').send({
       employee_number: 'EMP005',
       name: 'Portal Worker',
@@ -255,7 +257,7 @@ describe('Employees Routes', () => {
     expect(loginRes.body.user.employee_id).toBe(createRes.body.id);
   });
 
-  test('POST /api/employees/:id/portal-access resets an existing worker login with a custom username', async () => {
+  test('POST /api/employees/:id/portal-access resets an existing employee login with a custom username', async () => {
     const createRes = await agent.post('/api/employees').send({
       employee_number: 'EMP005RESET',
       name: 'Portal Reset Worker',
@@ -312,7 +314,7 @@ describe('Employees Routes', () => {
     expect(conflictRes.body.error).toBe('That username is already in use');
   });
 
-  test('DELETE /api/employees/:id/portal-access revokes worker login access', async () => {
+  test('DELETE /api/employees/:id/portal-access revokes employee login access', async () => {
     const createRes = await agent.post('/api/employees').send({
       employee_number: 'EMP006',
       name: 'Revoked Worker',

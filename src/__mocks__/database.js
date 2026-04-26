@@ -29,9 +29,36 @@ function generateId() {
 function makeDoc(data) {
   const _id = String(data._id || generateId());
   const doc = { ...data, _id, id: _id };
+
+  if (doc.worker_identifier !== undefined && doc.employee_identifier === undefined) {
+    doc.employee_identifier = doc.worker_identifier;
+  }
+  if (doc.employee_identifier !== undefined && doc.worker_identifier === undefined) {
+    doc.worker_identifier = doc.employee_identifier;
+  }
+
+  if (doc.worker_category_id !== undefined && doc.employee_category_id === undefined) {
+    doc.employee_category_id = doc.worker_category_id;
+  }
+  if (doc.employee_category_id !== undefined && doc.worker_category_id === undefined) {
+    doc.worker_category_id = doc.employee_category_id;
+  }
+
   // Expose toJSON so route handlers can call doc.toJSON()
   doc.toJSON = function () {
     const { toJSON, ...rest } = this; // eslint-disable-line no-unused-vars
+    if (rest.worker_identifier !== undefined && rest.employee_identifier === undefined) {
+      rest.employee_identifier = rest.worker_identifier;
+    }
+    if (rest.employee_identifier !== undefined && rest.worker_identifier === undefined) {
+      rest.worker_identifier = rest.employee_identifier;
+    }
+    if (rest.worker_category_id !== undefined && rest.employee_category_id === undefined) {
+      rest.employee_category_id = rest.worker_category_id;
+    }
+    if (rest.employee_category_id !== undefined && rest.worker_category_id === undefined) {
+      rest.worker_category_id = rest.employee_category_id;
+    }
     return rest;
   };
   return doc;
@@ -74,6 +101,11 @@ function toComparableValue(value) {
 function matchFilter(doc, filter) {
   if (!filter || Object.keys(filter).length === 0) return true;
   for (const [k, v] of Object.entries(filter)) {
+    const docKey = k === 'employee_category_id'
+      ? 'worker_category_id'
+      : k === 'employee_identifier'
+        ? 'worker_identifier'
+        : k;
     if (k === '$or') {
       if (!v.some((f) => matchFilter(doc, f))) return false;
     } else if (k === '$expr') {
@@ -81,34 +113,34 @@ function matchFilter(doc, filter) {
     } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
       if (v.$regex !== undefined) {
         const re = new RegExp(v.$regex, v.$options || '');
-        if (!re.test(String(doc[k] ?? ''))) return false;
+        if (!re.test(String(doc[docKey] ?? ''))) return false;
         continue;
       }
 
       if (v.$in !== undefined) {
         if (!Array.isArray(v.$in)) return false;
-        if (!v.$in.some((item) => String(item) === String(doc[k]))) return false;
+        if (!v.$in.some((item) => String(item) === String(doc[docKey]))) return false;
       }
 
       if (v.$gt !== undefined) {
-        if (!(toComparableValue(doc[k]) > toComparableValue(v.$gt))) return false;
+        if (!(toComparableValue(doc[docKey]) > toComparableValue(v.$gt))) return false;
       }
 
       if (v.$gte !== undefined) {
-        if (!(toComparableValue(doc[k]) >= toComparableValue(v.$gte))) return false;
+        if (!(toComparableValue(doc[docKey]) >= toComparableValue(v.$gte))) return false;
       }
 
       if (v.$lte !== undefined) {
-        if (!(toComparableValue(doc[k]) <= toComparableValue(v.$lte))) return false;
+        if (!(toComparableValue(doc[docKey]) <= toComparableValue(v.$lte))) return false;
       }
     } else if (v === null) {
-      if (doc[k] != null) return false;
+      if (doc[docKey] != null) return false;
     } else if (typeof v === 'boolean') {
       // Boolean fields may be undefined (schema would default them to true/false)
-      const docVal = doc[k] === undefined ? true : doc[k];
+      const docVal = doc[docKey] === undefined ? true : doc[docKey];
       if (Boolean(docVal) !== v) return false;
     } else {
-      if (String(doc[k]) !== String(v)) return false;
+      if (String(doc[docKey]) !== String(v)) return false;
     }
   }
   return true;
@@ -327,10 +359,46 @@ MealRecord.create = async function (data) {
 const _origEmployeeCreate = Employee.create.bind(Employee);
 Employee.create = async function (data) {
   const payload = { ...data };
+  if (!payload.worker_identifier && payload.employee_identifier) {
+    payload.worker_identifier = payload.employee_identifier;
+  }
+  if (!payload.employee_identifier && payload.worker_identifier) {
+    payload.employee_identifier = payload.worker_identifier;
+  }
+  if (!payload.worker_category_id && payload.employee_category_id) {
+    payload.worker_category_id = payload.employee_category_id;
+  }
+  if (!payload.employee_category_id && payload.worker_category_id) {
+    payload.employee_category_id = payload.worker_category_id;
+  }
   if (!payload.worker_identifier && payload.employee_number) {
     payload.worker_identifier = payload.employee_number;
   }
   return _origEmployeeCreate(payload);
+};
+
+const _origVendorRestrictionCreate = VendorRestriction.create.bind(VendorRestriction);
+VendorRestriction.create = async function (data) {
+  const payload = { ...data };
+  if (!payload.worker_category_id && payload.employee_category_id) {
+    payload.worker_category_id = payload.employee_category_id;
+  }
+  if (!payload.employee_category_id && payload.worker_category_id) {
+    payload.employee_category_id = payload.worker_category_id;
+  }
+  return _origVendorRestrictionCreate(payload);
+};
+
+const _origEntitlementPolicyCreate = EntitlementPolicy.create.bind(EntitlementPolicy);
+EntitlementPolicy.create = async function (data) {
+  const payload = { ...data };
+  if (!payload.worker_category_id && payload.employee_category_id) {
+    payload.worker_category_id = payload.employee_category_id;
+  }
+  if (!payload.employee_category_id && payload.worker_category_id) {
+    payload.employee_category_id = payload.worker_category_id;
+  }
+  return _origEntitlementPolicyCreate(payload);
 };
 
 // ── Lifecycle helpers ─────────────────────────────────────────────────────────

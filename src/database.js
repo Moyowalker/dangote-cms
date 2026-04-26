@@ -53,7 +53,7 @@ const mealPlanSchema = new mongoose.Schema(
 
 const employeeSchema = new mongoose.Schema(
   {
-    worker_identifier: { type: String, required: true, unique: true },
+    worker_identifier: { type: String, required: true, unique: true, alias: 'employee_identifier' },
     employee_number: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     department: { type: String, required: true },
@@ -62,7 +62,7 @@ const employeeSchema = new mongoose.Schema(
     photo_data_url: { type: String, default: null },
     badge_number: { type: String, required: true, unique: true },
     status: { type: String, enum: ['active', 'suspended', 'deactivated'], default: 'active' },
-    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', default: null },
+    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', default: null, alias: 'employee_category_id' },
     meal_plan_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MealPlan', default: null },
     active: { type: Boolean, default: true }
   },
@@ -72,8 +72,14 @@ const employeeSchema = new mongoose.Schema(
 employeeSchema.index({ created_at: -1 });
 
 employeeSchema.pre('validate', function syncWorkerIdentifier() {
+  if (!this.worker_identifier && this.employee_identifier) {
+    this.worker_identifier = this.employee_identifier;
+  }
   if (!this.worker_identifier && this.employee_number) {
     this.worker_identifier = this.employee_number;
+  }
+  if (!this.employee_identifier && this.worker_identifier) {
+    this.employee_identifier = this.worker_identifier;
   }
 });
 
@@ -102,7 +108,7 @@ vendorSchema.index({ canteen_location: 1 });
 const vendorRestrictionSchema = new mongoose.Schema(
   {
     vendor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
-    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', required: true },
+    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', required: true, alias: 'employee_category_id' },
     meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], required: true },
     active: { type: Boolean, default: true }
   },
@@ -162,7 +168,7 @@ qrTokenMetadataSchema.index({ consumed_at: 1 });
 
 const entitlementPolicySchema = new mongoose.Schema(
   {
-    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', required: true },
+    worker_category_id: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkerCategory', required: true, alias: 'employee_category_id' },
     meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], required: true },
     daily_limit: { type: Number, default: 1, min: 0 },
     active: { type: Boolean, default: true }

@@ -84,7 +84,7 @@ router.delete(['/worker-categories/:id', '/employee-categories/:id'], requireAdm
 
     await deleteWorkerCategory(req.params.id);
 
-    res.json({ message: 'Worker category deleted successfully' });
+    res.json({ message: 'Employee category deleted successfully' });
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');

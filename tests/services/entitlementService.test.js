@@ -198,4 +198,27 @@ describe('Entitlement Service Unit Tests', () => {
     expect(category.code).toBe('UT-ALIAS');
     expect(balance.meal_type).toBe('lunch');
   });
+
+  test('accepts employee_category_id on mocked policy and employee documents', async () => {
+    const category = await EmployeeCategory.create({ code: 'UT-CANON', name: 'Canonical Category' });
+
+    await EntitlementPolicy.create({
+      employee_category_id: category._id,
+      meal_type: 'lunch',
+      daily_limit: 2,
+      active: true
+    });
+
+    const employee = await Employee.create({
+      employee_number: 'UT007',
+      name: 'Canonical Alias User',
+      department: 'Ops',
+      badge_number: 'UT-BADGE-7',
+      employee_category_id: category._id
+    });
+
+    const eligibility = await validateConsumptionEligibility(employee, 'lunch', '2026-03-22');
+    expect(eligibility.ok).toBe(true);
+    expect(eligibility.remaining).toBe(2);
+  });
 });

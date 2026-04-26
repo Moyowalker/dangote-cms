@@ -18,6 +18,8 @@ const router = express.Router();
 // Flatten a Mongoose employee document for the response, adding meal_plan_name
 function formatEmployee(doc) {
   const obj = doc.toJSON ? doc.toJSON() : { ...doc };
+  obj.employee_identifier = obj.worker_identifier || null;
+
   if (doc.meal_plan_id && typeof doc.meal_plan_id === 'object' && doc.meal_plan_id.name) {
     obj.meal_plan_name = doc.meal_plan_id.name;
     obj.meal_plan_id = doc.meal_plan_id._id

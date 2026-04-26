@@ -49,7 +49,7 @@ async function createWorkerCategory(payload) {
     });
   } catch (err) {
     if (err.code === 11000) {
-      throw makeError(409, 'CONFLICT', 'Worker category code already exists');
+      throw makeError(409, 'CONFLICT', 'Employee category code already exists');
     }
     throw err;
   }
@@ -61,7 +61,7 @@ async function createEmployeeCategory(payload) {
 
 async function updateWorkerCategory(id, payload) {
   if (!isValidId(id)) {
-    throw makeError(404, 'NOT_FOUND', 'Worker category not found');
+    throw makeError(404, 'NOT_FOUND', 'Employee category not found');
   }
 
   const { code, name, description, active } = payload;
@@ -89,13 +89,13 @@ async function updateWorkerCategory(id, payload) {
     );
 
     if (!updated) {
-      throw makeError(404, 'NOT_FOUND', 'Worker category not found');
+      throw makeError(404, 'NOT_FOUND', 'Employee category not found');
     }
 
     return updated;
   } catch (err) {
     if (err.code === 11000) {
-      throw makeError(409, 'CONFLICT', 'Worker category code already exists');
+      throw makeError(409, 'CONFLICT', 'Employee category code already exists');
     }
     throw err;
   }
@@ -107,12 +107,12 @@ async function updateEmployeeCategory(id, payload) {
 
 async function deleteWorkerCategory(id) {
   if (!isValidId(id)) {
-    throw makeError(404, 'NOT_FOUND', 'Worker category not found');
+    throw makeError(404, 'NOT_FOUND', 'Employee category not found');
   }
 
   const deleted = await EmployeeCategory.findByIdAndDelete(id);
   if (!deleted) {
-    throw makeError(404, 'NOT_FOUND', 'Worker category not found');
+    throw makeError(404, 'NOT_FOUND', 'Employee category not found');
   }
 
   return deleted;
@@ -155,7 +155,7 @@ async function createEntitlementPolicy(payload) {
 
   const category = await EmployeeCategory.findById(employeeCategoryId);
   if (!category) {
-    throw makeError(404, 'NOT_FOUND', 'Worker category not found');
+    throw makeError(404, 'NOT_FOUND', 'Employee category not found');
   }
 
   try {
@@ -225,7 +225,7 @@ async function assignEmployeeCategory(employeeId, workerCategoryId) {
   if (workerCategoryId) {
     const category = await EmployeeCategory.findById(workerCategoryId);
     if (!category) {
-      throw makeError(404, 'NOT_FOUND', 'Worker category not found');
+      throw makeError(404, 'NOT_FOUND', 'Employee category not found');
     }
   }
 

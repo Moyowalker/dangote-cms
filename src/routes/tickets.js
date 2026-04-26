@@ -81,11 +81,11 @@ router.get('/self-service-summary', requireAuth, async (req, res) => {
     const role = canonicalizeRole(actor?.role);
 
     if (role !== ROLE.EMPLOYEE) {
-      return sendError(res, 403, 'Worker portal access is limited to employee accounts', 'FORBIDDEN');
+      return sendError(res, 403, 'Employee portal access is limited to employee accounts', 'FORBIDDEN');
     }
 
     if (!actor?.employee_id || !mongoose.Types.ObjectId.isValid(actor.employee_id)) {
-      return sendError(res, 403, 'Employee account is not linked to a worker profile', 'FORBIDDEN');
+      return sendError(res, 403, 'Employee account is not linked to an employee profile', 'FORBIDDEN');
     }
 
     const requestedDate = typeof req.query.date === 'string' && req.query.date.trim()

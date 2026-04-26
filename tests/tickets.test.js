@@ -13,11 +13,11 @@ const {
   MealRecord,
   AuditLog,
   QRTokenMetadata,
-  WorkerCategory,
+  EmployeeCategory,
   Vendor,
   VendorRestriction,
   Transaction,
-  WorkerEntitlementBalance,
+  EmployeeEntitlementBalance,
   User
 } = require('../src/database');
 
@@ -37,8 +37,8 @@ beforeEach(async () => {
   await VendorRestriction.deleteMany({});
   await Vendor.deleteMany({});
   await Transaction.deleteMany({});
-  await WorkerEntitlementBalance.deleteMany({});
-  await WorkerCategory.deleteMany({});
+  await EmployeeEntitlementBalance.deleteMany({});
+  await EmployeeCategory.deleteMany({});
   await Employee.deleteMany({});
   testEmployee = await Employee.create({
     employee_number: 'EMP001',
@@ -174,7 +174,7 @@ describe('Tickets Routes', () => {
       const records = await MealRecord.find({ employee_id: testEmployee._id, meal_type: 'lunch' });
       expect(records.length).toBe(0);
 
-      const balance = await WorkerEntitlementBalance.findOne({
+      const balance = await EmployeeEntitlementBalance.findOne({
         employee_id: testEmployee._id,
         meal_type: 'lunch',
         balance_date: new Date().toISOString().split('T')[0]
@@ -223,8 +223,8 @@ describe('Tickets Routes', () => {
   });
 
   test('POST /api/tickets/consume enforces vendor restriction checks', async () => {
-    const allowedCategory = await WorkerCategory.create({ code: 'TK-ALLOW', name: 'Allowed Category' });
-    const blockedCategory = await WorkerCategory.create({ code: 'TK-BLOCK', name: 'Blocked Category' });
+    const allowedCategory = await EmployeeCategory.create({ code: 'TK-ALLOW', name: 'Allowed Category' });
+    const blockedCategory = await EmployeeCategory.create({ code: 'TK-BLOCK', name: 'Blocked Category' });
     const vendor = await Vendor.create({ code: 'VEND-01', name: 'Main Vendor', canteen_location: 'Main Canteen', active: true });
 
     await VendorRestriction.create({

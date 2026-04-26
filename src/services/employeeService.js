@@ -72,7 +72,7 @@ function applyRoleScope(baseFilter, user) {
 
   if (role === ROLE.EMPLOYEE) {
     if (!user.employee_id || !mongoose.Types.ObjectId.isValid(user.employee_id)) {
-      throw makeError(403, 'FORBIDDEN', 'Employee account is not linked to a worker profile');
+      throw makeError(403, 'FORBIDDEN', 'Employee account is not linked to an employee profile');
     }
     scoped._id = user.employee_id;
     return scoped;

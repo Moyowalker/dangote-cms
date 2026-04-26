@@ -8,7 +8,7 @@ const {
   initializeDatabase,
   closeDatabase,
   Employee,
-  WorkerCategory,
+  EmployeeCategory,
   EntitlementPolicy
 } = require('../src/database');
 
@@ -23,7 +23,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
   await EntitlementPolicy.deleteMany({});
-  await WorkerCategory.deleteMany({});
+  await EmployeeCategory.deleteMany({});
   await Employee.deleteMany({});
 
   employee = await Employee.create({
@@ -52,7 +52,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('GET /api/employee-categories lists categories through the canonical alias route', async () => {
-    await WorkerCategory.create({ code: 'EMP-LIST', name: 'Employee List Category' });
+    await EmployeeCategory.create({ code: 'EMP-LIST', name: 'Employee List Category' });
 
     const res = await agent.get('/api/employee-categories');
 
@@ -78,10 +78,11 @@ describe('Entitlement Admin Routes', () => {
     const res = await agent.post('/api/worker-categories').send({ code: 'STAFF', name: 'Staff B' });
 
     expect(res.status).toBe(409);
+    expect(res.body.error).toBe('Employee category code already exists');
   });
 
   test('PUT /api/employee-categories/:id updates category through the canonical alias route', async () => {
-    const category = await WorkerCategory.create({ code: 'EUP', name: 'Employee Update' });
+    const category = await EmployeeCategory.create({ code: 'EUP', name: 'Employee Update' });
 
     const res = await agent.put(`/api/employee-categories/${category.id}`).send({ name: 'Employee Update Renamed' });
 
@@ -91,7 +92,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('DELETE /api/employee-categories/:id deletes category through the canonical alias route', async () => {
-    const category = await WorkerCategory.create({ code: 'EDEL', name: 'Employee Delete' });
+    const category = await EmployeeCategory.create({ code: 'EDEL', name: 'Employee Delete' });
 
     const res = await agent.delete(`/api/employee-categories/${category.id}`);
 
@@ -99,8 +100,17 @@ describe('Entitlement Admin Routes', () => {
     expect(res.body.message).toBe('Employee category deleted successfully');
   });
 
+  test('DELETE /api/worker-categories/:id also returns canonical employee-category wording', async () => {
+    const category = await EmployeeCategory.create({ code: 'WDEL', name: 'Legacy Delete' });
+
+    const res = await agent.delete(`/api/worker-categories/${category.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Employee category deleted successfully');
+  });
+
   test('POST /api/entitlement-policies creates policy for category', async () => {
-    const category = await WorkerCategory.create({ code: 'PERM', name: 'Permanent' });
+    const category = await EmployeeCategory.create({ code: 'PERM', name: 'Permanent' });
 
     const res = await agent.post('/api/entitlement-policies').send({
       worker_category_id: category.id,
@@ -115,7 +125,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('POST /api/entitlement-policies accepts employee_category_id as the canonical category field', async () => {
-    const category = await WorkerCategory.create({ code: 'EMP-CAT', name: 'Employee Category' });
+    const category = await EmployeeCategory.create({ code: 'EMP-CAT', name: 'Employee Category' });
 
     const res = await agent.post('/api/entitlement-policies').send({
       employee_category_id: category.id,
@@ -129,7 +139,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('POST /api/entitlement-policies rejects negative daily_limit with consistent error envelope', async () => {
-    const category = await WorkerCategory.create({ code: 'NEG', name: 'Negative Test' });
+    const category = await EmployeeCategory.create({ code: 'NEG', name: 'Negative Test' });
 
     const res = await agent.post('/api/entitlement-policies').send({
       worker_category_id: category.id,
@@ -153,8 +163,8 @@ describe('Entitlement Admin Routes', () => {
     expect(res.status).toBe(404);
   });
 
-  test('PUT /api/employees/:id/category assigns worker category', async () => {
-    const category = await WorkerCategory.create({ code: 'TEMP', name: 'Temp' });
+  test('PUT /api/employees/:id/category assigns employee category', async () => {
+    const category = await EmployeeCategory.create({ code: 'TEMP', name: 'Temp' });
 
     const res = await agent.put(`/api/employees/${employee.id}/category`).send({
       worker_category_id: category.id
@@ -166,7 +176,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('PUT /api/employees/:id/category accepts employee_category_id as the canonical field', async () => {
-    const category = await WorkerCategory.create({ code: 'TEMP2', name: 'Temp Two' });
+    const category = await EmployeeCategory.create({ code: 'TEMP2', name: 'Temp Two' });
 
     const res = await agent.put(`/api/employees/${employee.id}/category`).send({
       employee_category_id: category.id
@@ -178,7 +188,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('GET /api/entitlement-policies lists existing policies', async () => {
-    const category = await WorkerCategory.create({ code: 'LINE', name: 'Line Worker' });
+    const category = await EmployeeCategory.create({ code: 'LINE', name: 'Line Employee' });
     await EntitlementPolicy.create({
       worker_category_id: category.id,
       meal_type: 'dinner',
@@ -195,7 +205,7 @@ describe('Entitlement Admin Routes', () => {
   });
 
   test('GET /api/entitlement-policies accepts employee_category_id as the canonical filter', async () => {
-    const category = await WorkerCategory.create({ code: 'LINE2', name: 'Line Employee' });
+    const category = await EmployeeCategory.create({ code: 'LINE2', name: 'Line Employee' });
     await EntitlementPolicy.create({
       worker_category_id: category.id,
       meal_type: 'dinner',
