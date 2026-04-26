@@ -24,7 +24,18 @@ function normalizeApiBaseUrl(value) {
   return trimmed;
 }
 
-const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+function shouldUseSameOriginProxy() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const hostname = String(window.location.hostname || '').toLowerCase();
+  return hostname.endsWith('.netlify.app');
+}
+
+const apiBaseUrl = shouldUseSameOriginProxy()
+  ? '/api'
+  : normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 const client = axios.create({
   baseURL: apiBaseUrl,
