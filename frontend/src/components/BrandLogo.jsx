@@ -1,5 +1,5 @@
 import React from 'react';
-import dangoteLogo from '../assets/dangote-logo.svg';
+import dangoteLogo from '../assets/dangote.png';
 
 export default function BrandLogo({ compact = false, className = '', showTagline = false }) {
   return (

@@ -27,6 +27,7 @@ export default function Navbar() {
         )}
         {isReportViewerRole(user.role) && (
           <>
+            <li><NavLink to="/menu">Menu Items</NavLink></li>
             <li><NavLink to="/reports">Reports</NavLink></li>
             <li><NavLink to="/reconciliation">Reconciliation</NavLink></li>
           </>

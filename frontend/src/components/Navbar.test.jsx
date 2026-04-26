@@ -32,6 +32,7 @@ describe('Navbar', () => {
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Workers' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Menu Items' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reconciliation' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
@@ -51,6 +52,7 @@ describe('Navbar', () => {
       </MemoryRouter>
     );
 
+    expect(screen.getByRole('link', { name: 'Menu Items' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tickets' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Scan QR' })).toBeInTheDocument();
   });
@@ -70,6 +72,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'My Portal' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Workers' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Menu Items' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
   });
 });

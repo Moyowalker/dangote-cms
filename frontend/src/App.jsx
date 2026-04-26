@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -11,13 +11,17 @@ import VendorInterface from './pages/VendorInterface';
 import Reports from './pages/Reports';
 import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
+import MenuManagement from './pages/MenuManagement';
 import { REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
 
 export default function App() {
+  const location = useLocation();
+  const isLoginRoute = location.pathname === '/login';
+
   return (
     <AuthProvider>
       <div className="app-shell">
-        <Navbar />
+        {isLoginRoute ? null : <Navbar />}
         <main className="app-main">
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -51,6 +55,11 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/my-qr" element={<Navigate to="/my-portal" replace />} />
+            <Route path="/menu" element={
+              <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
+                <MenuManagement />
+              </ProtectedRoute>
+            } />
             <Route path="/reports" element={
               <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
                 <Reports />
@@ -63,12 +72,14 @@ export default function App() {
             } />
           </Routes>
         </main>
-        <footer className="app-footer">
-          <div className="app-footer-inner">
-            <span className="app-footer-brand">Dangote Canteen Management Platform</span>
-            <span className="app-footer-credit">Developed by Emocom Technologies</span>
-          </div>
-        </footer>
+        {isLoginRoute ? null : (
+          <footer className="app-footer">
+            <div className="app-footer-inner">
+              <span className="app-footer-brand">Dangote Canteen Management Platform</span>
+              <span className="app-footer-credit">Powered by Emocom Technologies</span>
+            </div>
+          </footer>
+        )}
       </div>
     </AuthProvider>
   );

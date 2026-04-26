@@ -38,7 +38,7 @@ describe('Login', () => {
 
     await user.type(screen.getByLabelText('Username'), 'vendor-user');
     await user.type(screen.getByLabelText('Password'), 'secret');
-    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    await user.click(screen.getByRole('button', { name: 'Secure Sign In' }));
 
     expect(login).toHaveBeenCalledWith('vendor-user', 'secret');
     expect(await screen.findByText('vendor screen')).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe('Login', () => {
 
     await user.type(screen.getByLabelText('Username'), 'vendor-user');
     await user.type(screen.getByLabelText('Password'), 'secret');
-    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    await user.click(screen.getByRole('button', { name: 'Secure Sign In' }));
 
     expect(await screen.findByText('scan screen')).toBeInTheDocument();
   });
@@ -81,7 +81,7 @@ describe('Login', () => {
 
     await user.type(screen.getByLabelText('Username'), 'employee-user');
     await user.type(screen.getByLabelText('Password'), 'secret');
-    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    await user.click(screen.getByRole('button', { name: 'Secure Sign In' }));
 
     expect(await screen.findByText('employee portal screen')).toBeInTheDocument();
   });
@@ -102,7 +102,7 @@ describe('Login', () => {
 
     await user.type(screen.getByLabelText('Username'), 'hr-user');
     await user.type(screen.getByLabelText('Password'), 'secret');
-    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    await user.click(screen.getByRole('button', { name: 'Secure Sign In' }));
 
     expect(await screen.findByText('dashboard screen')).toBeInTheDocument();
   });
@@ -122,7 +122,7 @@ describe('Login', () => {
 
     await user.type(screen.getByLabelText('Username'), 'vendor-user');
     await user.type(screen.getByLabelText('Password'), 'wrong');
-    await user.click(screen.getByRole('button', { name: 'Sign In' }));
+    await user.click(screen.getByRole('button', { name: 'Secure Sign In' }));
 
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
   });
@@ -151,12 +151,12 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    await user.click(screen.getByRole('button', { name: /forgot worker password/i }));
+      await user.click(screen.getByRole('button', { name: /forgot password/i }));
     await user.type(screen.getByLabelText(/portal username/i), 'EMP-001');
     await user.type(screen.getByLabelText(/employee number/i), 'EMP-001');
     await user.type(screen.getByLabelText(/badge number/i), 'BG-001');
     await user.type(screen.getByLabelText(/phone last 4 digits/i), '5678');
-    await user.click(screen.getByRole('button', { name: /verify worker details/i }));
+    await user.click(screen.getByRole('button', { name: /verify identity/i }));
 
     expect(client.post).toHaveBeenNthCalledWith(1, '/auth/password-recovery/verify', {
       username: 'EMP-001',

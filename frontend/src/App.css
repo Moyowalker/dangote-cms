@@ -1975,86 +1975,254 @@ tbody tr:hover {
 }
 
 /* =============================================================
-   ENHANCED LOGIN PAGE
+   ENHANCED LOGIN PAGE - MODERN ENTERPRISE STYLE
    ============================================================= */
 
-.login-page {
-  background: linear-gradient(135deg, var(--brand-navy-deep), var(--brand-navy), #182980, var(--brand-coral-deep));
-  background-size: 300% 300%;
-  animation: dashHeroShimmer 12s ease infinite;
+.login-page-modern {
+  display: flex;
+  min-height: 100vh;
+  width: 100vw;
+  background-color: #ffffff;
+}
+
+.login-modern-split {
+  display: flex;
+  width: 100%;
+}
+
+.login-modern-brand {
+  flex: 1;
+  background-color: var(--brand-navy); /* Dangote Blue */
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
-.login-page::before {
-  content: '';
+
+.login-modern-brand::before {
+  content: "";
   position: absolute;
-  top: 10%;
-  right: 5%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
+  width: 150%;
+  height: 150%;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 60%);
+  top: -25%;
+  left: -25%;
 }
-.login-page::after {
-  content: '';
-  position: absolute;
-  bottom: 5%;
-  left: 3%;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.login-card {
-  border-radius: 20px;
-  padding: 44px 40px;
-  box-shadow: 0 12px 48px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
-  animation: dashSlideUp 0.5s ease both;
+
+.login-modern-brand-content {
   position: relative;
-  z-index: 1;
-  border-top: 4px solid var(--brand-coral);
+  z-index: 10;
+  text-align: center;
+  padding: 40px;
 }
-.login-logo h1 {
-  font-size: 1.4rem;
+
+.login-modern-watermark {
+  font-size: 14vw;
   font-weight: 800;
+  color: rgba(255, 255, 255, 0.03);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: -1;
+  letter-spacing: 0.1em;
+}
+
+.login-modern-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 12px;
+  letter-spacing: -0.02em;
+}
+
+.login-modern-subtitle {
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.login-modern-form-pane {
+  flex: 0 0 500px;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px;
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.05);
+  z-index: 20;
+}
+
+.login-modern-card {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.login-modern-logo-wrap {
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.login-modern-logo {
+  width: 220px;
+  margin-bottom: 16px;
+}
+
+.login-modern-greeting {
+  font-size: 1.5rem;
+  font-weight: 700;
   color: var(--brand-navy);
+  margin-bottom: 8px;
 }
-.login-logo p {
-  color: #6c757d;
-  font-size: 0.82rem;
-  margin-top: 6px;
-  letter-spacing: 0.3px;
+
+.login-modern-form {
+  margin-bottom: 24px;
 }
-.login-card .form-control {
-  border-radius: 10px;
-  border: 1.5px solid #dde4df;
-  padding: 11px 14px;
-  font-size: 0.9rem;
+
+.form-group-modern {
+  margin-bottom: 20px;
+}
+
+.form-group-modern label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-control-modern {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #1a202c;
+  background-color: #f7fafc;
   transition: all 0.2s ease;
 }
-.login-card .form-control:focus {
+
+.form-control-modern:focus {
+  outline: none;
   border-color: var(--brand-coral);
-  box-shadow: 0 0 0 3px rgba(229,106,84,0.12);
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(229, 106, 84, 0.15);
 }
-.login-card .btn-primary {
-  background: linear-gradient(135deg, var(--brand-navy), #1b2d80);
-  border-radius: 10px;
+
+.btn-modern-primary {
+  width: 100%;
+  padding: 14px;
+  background-color: var(--brand-navy);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
   font-weight: 600;
-  font-size: 0.95rem;
-  padding: 12px;
-  box-shadow: 0 4px 12px rgba(16,27,103,0.25);
-  transition: all 0.25s ease;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-top: 10px;
 }
-.login-card .btn-primary:hover {
-  background: linear-gradient(135deg, var(--brand-navy-deep), var(--brand-navy));
-  box-shadow: 0 6px 20px rgba(16,27,103,0.35);
-  transform: translateY(-2px);
+
+.btn-modern-primary:hover {
+  background-color: var(--brand-navy-deep);
 }
-.login-card .form-group label {
-  font-size: 0.82rem;
+
+.btn-modern-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-modern-secondary {
+  width: 100%;
+  padding: 14px;
+  background-color: transparent;
+  color: var(--brand-navy);
+  border: 1px solid var(--brand-navy);
+  border-radius: 8px;
+  font-size: 1rem;
   font-weight: 600;
-  color: #3d5a4a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 10px;
+}
+
+.btn-modern-secondary:hover {
+  background-color: rgba(16, 27, 103, 0.05);
+}
+
+.btn-modern-text {
+  background: none;
+  border: none;
+  color: var(--brand-coral);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.btn-modern-text:hover {
+  color: var(--brand-coral-deep);
+  text-decoration: underline;
+}
+
+.login-modern-recovery-wrap {
+  margin-top: 24px;
+  border-top: 1px solid #edf2f7;
+  padding-top: 24px;
+}
+
+.login-modern-recovery-card {
+  margin-top: 20px;
+  background-color: #f7fafc;
+  padding: 24px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.login-modern-recovery-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--brand-navy);
+  margin-bottom: 8px;
+}
+
+.login-modern-recovery-desc {
+  font-size: 0.85rem;
+  color: #718096;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.login-modern-footer {
+  margin-top: 40px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #a0aec0;
+}
+
+@media (max-width: 900px) {
+  .login-modern-split {
+    flex-direction: column;
+  }
+  .login-modern-brand {
+    display: none; /* Hide brand panel on mobile to save space */
+  }
+  .login-modern-form-pane {
+    flex: 1;
+    padding: 30px;
+    box-shadow: none;
+  }
+  .login-modern-card {
+    max-width: 100%;
+  }
 }
 
 /* =============================================================
@@ -2124,21 +2292,279 @@ tbody tr:hover {
 }
 
 /* =============================================================
-   RESPONSIVE — INNER PAGES
+   MENU MANAGEMENT PAGE
    ============================================================= */
 
-@media (max-width: 768px) {
-  .pg-header { padding: 24px 16px 44px; }
-  .pg-header-inner { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .pg-title { font-size: 1.25rem; }
-  .pg-body { padding: 0 12px 32px; }
-  .pg-body .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .navbar { padding: 0 16px; height: 56px; }
-  .navbar-brand { font-size: 1rem; }
-  .navbar-nav a { padding: 6px 10px; font-size: 0.8rem; }
+.menu-stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
+
+.menu-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.menu-modal-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* =============================================================
+   RESPONSIVE — GLOBAL HARDENING
+   ============================================================= */
+
+@media (max-width: 1200px) {
+  .pg-header-inner,
+  .pg-body,
+  .app-footer-inner {
+    max-width: 100%;
+  }
+
+  .navbar {
+    padding: 0 16px;
+  }
+
+  .navbar-nav {
+    gap: 8px;
+  }
+
+  .navbar-nav a {
+    padding: 7px 10px;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 992px) {
+  .navbar {
+    min-height: 72px;
+    height: auto;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .navbar-brand {
+    order: 1;
+  }
+
+  .navbar-user {
+    order: 2;
+    margin-left: auto;
+    font-size: 0.8rem;
+  }
+
+  .navbar-nav {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding: 8px 0 2px;
+    flex-wrap: nowrap;
+  }
+
+  .navbar-nav li {
+    flex: 0 0 auto;
+  }
+
+  .brand-lockup.compact .brand-product-name {
+    display: none;
+  }
+
+  .pg-header {
+    padding: 24px 16px 44px;
+  }
+
+  .pg-header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .pg-title {
+    font-size: 1.3rem;
+  }
+
+  .pg-body {
+    padding: 0 12px 32px;
+  }
+
+  .pg-body .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pg-body .filter-grid,
+  .pg-body .form-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-container {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pg-body table {
+    min-width: 760px;
+  }
+
+  .modal {
+    width: min(92vw, 560px);
+    max-height: 88vh;
+    overflow-y: auto;
+  }
+
+  .app-footer-inner {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-main {
+    overflow-x: hidden;
+  }
+
+  .brand-lockup.compact .brand-wordmark {
+    font-size: 0.95rem;
+  }
+
+  .brand-lockup.compact .brand-logo-mark {
+    width: 46px;
+  }
+
+  .navbar-user {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .navbar-user > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70%;
+  }
+
+  .btn-logout {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .pg-header {
+    padding: 22px 14px 40px;
+  }
+
+  .pg-title {
+    font-size: 1.2rem;
+  }
+
+  .pg-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .pg-body .card {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .pg-body .stats-grid,
+  .menu-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pg-body .filter-grid,
+  .pg-body .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-actions {
+    justify-content: stretch;
+  }
+
+  .filters-actions .btn,
+  .menu-actions .btn,
+  .menu-modal-actions .btn {
+    width: 100%;
+  }
+
+  .menu-actions,
+  .menu-modal-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal {
+    width: calc(100vw - 20px);
+    padding: 18px;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+  }
+
+  .login-modern-form-pane {
+    padding: 22px 16px;
+  }
+
+  .login-modern-logo {
+    width: min(210px, 62vw);
+  }
+
+  .login-modern-greeting {
+    font-size: 1.25rem;
+  }
+
+  .app-footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 0.8rem;
+  }
+}
+
 @media (max-width: 480px) {
-  .pg-body .stats-grid { grid-template-columns: 1fr; }
-  .pg-header { padding: 20px 14px 40px; }
-  .pg-title { font-size: 1.1rem; }
+  .navbar {
+    padding: 8px 10px;
+    border-bottom-width: 2px;
+  }
+
+  .navbar-nav a {
+    padding: 6px 8px;
+    font-size: 0.76rem;
+  }
+
+  .pg-header {
+    padding: 18px 12px 34px;
+  }
+
+  .pg-title {
+    font-size: 1.05rem;
+  }
+
+  .pg-body {
+    margin-top: -16px;
+    padding: 0 10px 26px;
+  }
+
+  .pg-body .card-title {
+    font-size: 0.74rem;
+  }
+
+  .pg-body thead th,
+  .pg-body tbody td {
+    padding: 9px 10px;
+    font-size: 0.78rem;
+  }
+
+  .login-modern-form-pane {
+    padding: 18px 12px;
+  }
+
+  .login-modern-recovery-card {
+    padding: 16px;
+  }
 }
