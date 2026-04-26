@@ -74,6 +74,7 @@ npm run dev
 - `QR_TOKEN_SECRET` - HMAC secret used to sign and verify QR validation tokens
 - `DUPLICATE_WINDOW_MINUTES` - optional redemption window guard (default `2`) to block near-simultaneous duplicate attempts
 - `ADMIN_BOOTSTRAP_PASSWORD` - optional initial admin bootstrap password used only when no admin exists
+- `ADMIN_RESET_PASSWORD_ON_START` - optional recovery flag; when `true` and `ADMIN_BOOTSTRAP_PASSWORD` is set, resets the existing `admin` user's password on startup
 - `SEED_DEFAULT_PASSWORD` - required by `npm run seed:nonprod` to create non-prod demo users
 
 ### Frontend Env

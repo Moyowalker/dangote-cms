@@ -297,6 +297,16 @@ async function initializeDatabase(uri) {
   // Optional bootstrap user for non-production provisioning.
   const adminExists = await User.findOne({ username: 'admin' });
   const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  const forceAdminPasswordReset = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.ADMIN_RESET_PASSWORD_ON_START || '').trim().toLowerCase()
+  );
+
+  if (adminExists && bootstrapPassword && forceAdminPasswordReset) {
+    adminExists.password = await bcrypt.hash(bootstrapPassword, 10);
+    adminExists.role = 'admin';
+    await adminExists.save();
+  }
+
   if (!adminExists && bootstrapPassword) {
     const hashedPassword = await bcrypt.hash(bootstrapPassword, 10);
     await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
