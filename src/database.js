@@ -300,6 +300,9 @@ async function initializeDatabase(uri) {
   const forceAdminPasswordReset = ['1', 'true', 'yes', 'on'].includes(
     String(process.env.ADMIN_RESET_PASSWORD_ON_START || '').trim().toLowerCase()
   );
+  const forceDemoUserReset = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.DEMO_USERS_RESET_PASSWORDS_ON_START || '').trim().toLowerCase()
+  );
 
   if (adminExists && bootstrapPassword && forceAdminPasswordReset) {
     adminExists.password = await bcrypt.hash(bootstrapPassword, 10);
@@ -310,6 +313,84 @@ async function initializeDatabase(uri) {
   if (!adminExists && bootstrapPassword) {
     const hashedPassword = await bcrypt.hash(bootstrapPassword, 10);
     await User.create({ username: 'admin', password: hashedPassword, role: 'admin' });
+  }
+
+  const seedPassword = process.env.SEED_DEFAULT_PASSWORD;
+  if (seedPassword && forceDemoUserReset) {
+    const hashedSeedPassword = await bcrypt.hash(seedPassword, 10);
+    const demoUsers = [
+      { username: 'vendor.demo', role: 'vendor' },
+      { username: 'viewer.demo', role: 'viewer' },
+      { username: 'hr.demo', role: 'hr' }
+    ];
+
+    for (const demoUser of demoUsers) {
+      const existing = await User.findOne({ username: demoUser.username });
+      if (existing) {
+        existing.password = hashedSeedPassword;
+        existing.role = demoUser.role;
+        await existing.save();
+      } else {
+        await User.create({
+          username: demoUser.username,
+          password: hashedSeedPassword,
+          role: demoUser.role
+        });
+      }
+    }
+
+    let generalCategory = await WorkerCategory.findOne({ code: 'GENERAL' });
+    if (!generalCategory) {
+      generalCategory = await WorkerCategory.create({
+        code: 'GENERAL',
+        name: 'General Workforce',
+        description: 'Default workforce category for bootstrap environments',
+        active: true
+      });
+    }
+
+    for (const mealType of ['breakfast', 'lunch', 'dinner']) {
+      const existingPolicy = await EntitlementPolicy.findOne({ worker_category_id: generalCategory._id, meal_type: mealType });
+      if (!existingPolicy) {
+        await EntitlementPolicy.create({
+          worker_category_id: generalCategory._id,
+          meal_type: mealType,
+          daily_limit: 1,
+          active: true
+        });
+      }
+    }
+
+    let demoEmployee = await Employee.findOne({ employee_number: 'EMP-DEMO-001' });
+    if (!demoEmployee) {
+      demoEmployee = await Employee.create({
+        worker_identifier: 'EMP-DEMO-001',
+        employee_number: 'EMP-DEMO-001',
+        name: 'Employee Demo',
+        department: 'Operations',
+        email: 'employee.demo@dangote.local',
+        phone: '08001234001',
+        badge_number: 'BADGE-DEMO-001',
+        worker_category_id: generalCategory._id,
+        status: 'active',
+        active: true
+      });
+    }
+
+    const existingEmployeeUser = await User.findOne({ username: 'employee.demo' });
+    if (existingEmployeeUser) {
+      existingEmployeeUser.password = hashedSeedPassword;
+      existingEmployeeUser.role = 'employee';
+      existingEmployeeUser.employee_id = demoEmployee._id;
+      await existingEmployeeUser.save();
+    } else {
+      await User.create({
+        username: 'employee.demo',
+        password: hashedSeedPassword,
+        role: 'employee',
+        employee_id: demoEmployee._id
+      });
+    }
   }
 }
 

@@ -76,6 +76,7 @@ npm run dev
 - `ADMIN_BOOTSTRAP_PASSWORD` - optional initial admin bootstrap password used only when no admin exists
 - `ADMIN_RESET_PASSWORD_ON_START` - optional recovery flag; when `true` and `ADMIN_BOOTSTRAP_PASSWORD` is set, resets the existing `admin` user's password on startup
 - `SEED_DEFAULT_PASSWORD` - required by `npm run seed:nonprod` to create non-prod demo users
+- `DEMO_USERS_RESET_PASSWORDS_ON_START` - optional recovery/bootstrap flag; when `true` and `SEED_DEFAULT_PASSWORD` is set, creates or resets `vendor.demo`, `viewer.demo`, `hr.demo`, and `employee.demo` on startup
 
 ### Frontend Env
 
