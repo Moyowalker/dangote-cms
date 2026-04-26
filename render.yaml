@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: dangote-cms-backend
+    runtime: node
+    plan: free
+    autoDeploy: true
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: QR_TOKEN_SECRET
+        generateValue: true
+      - key: MONGO_URI
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SESSION_COOKIE_SAME_SITE
+        value: none
+      - key: CSRF_COOKIE_SAME_SITE
+        value: none
+      - key: LEGACY_STATIC_UI_ENABLED
+        value: false

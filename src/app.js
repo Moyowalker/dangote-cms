@@ -33,6 +33,16 @@ const { requireAuth, requireReportViewer } = require('./middleware/auth');
 
 const app = express();
 
+function resolveSameSite(value, fallback = 'strict') {
+  const normalized = String(value || fallback).trim().toLowerCase();
+  if (normalized === 'none') return 'none';
+  if (normalized === 'lax') return 'lax';
+  return 'strict';
+}
+
+const sessionCookieSameSite = resolveSameSite(process.env.SESSION_COOKIE_SAME_SITE, 'strict');
+const csrfCookieSameSite = resolveSameSite(process.env.CSRF_COOKIE_SAME_SITE, sessionCookieSameSite);
+
 function getAllowedOrigins() {
   const configured = (process.env.CORS_ORIGINS || '')
     .split(',')
@@ -179,7 +189,7 @@ app.use(session({
       }),
   cookie: {
     secure: isProduction,
-    sameSite: 'strict'
+    sameSite: sessionCookieSameSite
   }
 }));
 
@@ -189,7 +199,7 @@ const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
   cookieName: 'csrf-token',
   cookieOptions: {
     secure: isProduction,
-    sameSite: 'strict',
+    sameSite: csrfCookieSameSite,
     // httpOnly: true — token is read server-side from the cookie,
     // not by client JS, so httpOnly is safe here
     httpOnly: true

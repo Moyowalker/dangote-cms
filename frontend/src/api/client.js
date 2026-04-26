@@ -2,14 +2,16 @@ import axios from 'axios';
 
 export const AUTH_UNAUTHORIZED_EVENT = 'dangote-auth-unauthorized';
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 });
 
 const csrfClient = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' }
 });

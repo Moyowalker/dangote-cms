@@ -67,12 +67,50 @@ npm run dev
 - `MONGO_URI` - MongoDB connection string
 - `PORT` - backend port (default `3001`)
 - `CORS_ORIGINS` - optional comma-separated allowlist of frontend origins (example: `http://localhost:5173,https://cms.example.com`)
+- `SESSION_COOKIE_SAME_SITE` - optional session cookie SameSite policy (`strict`, `lax`, or `none`; use `none` for split-domain deployments like Netlify + Render)
+- `CSRF_COOKIE_SAME_SITE` - optional CSRF cookie SameSite policy (`strict`, `lax`, or `none`; defaults to `SESSION_COOKIE_SAME_SITE`)
 - `LEGACY_STAFF_ID_FALLBACK_ENABLED` - optional temporary migration flag for the `staff_id` to `vendor_user_id` cutover (defaults to `true`; set to `false` only after strict migration verification passes)
 - `LEGACY_STATIC_UI_ENABLED` - optional toggle for serving the legacy static HTML UI from `src/public` (defaults to `true`; set to `false` to disable it)
 - `QR_TOKEN_SECRET` - HMAC secret used to sign and verify QR validation tokens
 - `DUPLICATE_WINDOW_MINUTES` - optional redemption window guard (default `2`) to block near-simultaneous duplicate attempts
 - `ADMIN_BOOTSTRAP_PASSWORD` - optional initial admin bootstrap password used only when no admin exists
 - `SEED_DEFAULT_PASSWORD` - required by `npm run seed:nonprod` to create non-prod demo users
+
+### Frontend Env
+
+- `VITE_API_BASE_URL` - frontend API base URL (default `/api`, example production value: `https://your-backend.onrender.com/api`)
+
+## Deployment
+
+### Backend on Render
+
+1. Create a new Render Web Service from this repository.
+2. Use `render.yaml` in repo root for baseline configuration.
+3. In Render dashboard, set required secrets:
+	- `MONGO_URI`
+	- `CORS_ORIGINS` (include your Netlify frontend URL)
+4. Keep cookie vars for split-domain setup:
+	- `SESSION_COOKIE_SAME_SITE=none`
+	- `CSRF_COOKIE_SAME_SITE=none`
+5. Deploy and confirm health at `/api/health`.
+
+### Frontend on Netlify
+
+1. Create a new Netlify site from this repository.
+2. Netlify uses `netlify.toml` with:
+	- base: `frontend`
+	- build command: `npm ci && npm run build`
+	- publish dir: `dist`
+3. Set Netlify environment variable:
+	- `VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api`
+4. Redeploy frontend.
+
+### Post-Deploy Checklist
+
+1. Login works from Netlify frontend.
+2. API requests include credentials and succeed.
+3. No CORS errors in browser console.
+4. Render logs show healthy startup and MongoDB connection.
 
 ## Current API Surface (Mongo Backend)
 
