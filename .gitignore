@@ -29,3 +29,4 @@ artifacts/
 *.db-shm
 data/
 
+docs/operations/client-demo-run-sheet.md
