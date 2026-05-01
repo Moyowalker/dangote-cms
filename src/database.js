@@ -149,6 +149,50 @@ const reconciliationRecordSchema = new mongoose.Schema(
 
 reconciliationRecordSchema.index({ vendor_id: 1, reconciliation_date: 1 }, { unique: true });
 
+const offlineReconciliationBatchSchema = new mongoose.Schema(
+  {
+    device_id: { type: String, required: true },
+    device_label: { type: String, default: null },
+    batch_date: { type: String, required: true },
+    canteen_location: { type: String, required: true },
+    submitted_by_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    submitted_by_role: { type: String, default: null },
+    status: { type: String, enum: ['received', 'reconciled', 'needs_review', 'rejected'], default: 'received' },
+    summary: {
+      total_entries: { type: Number, default: 0 },
+      matched_entries: { type: Number, default: 0 },
+      unresolved_entries: { type: Number, default: 0 },
+      missing_transaction_links: { type: Number, default: 0 },
+      employee_not_found_entries: { type: Number, default: 0 },
+      client_failed_entries: { type: Number, default: 0 }
+    },
+    entries: [{
+      local_reference: { type: String, default: null },
+      badge_number: { type: String, required: true },
+      meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], required: true },
+      queued_at: { type: Date, default: null },
+      client_outcome: { type: String, enum: ['synced', 'duplicate', 'sync_failed'], default: 'synced' },
+      client_error: { type: String, default: null },
+      employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+      employee_name: { type: String, default: null },
+      employee_number: { type: String, default: null },
+      status: { type: String, enum: ['matched', 'matched_without_transaction', 'unresolved'], default: 'unresolved' },
+      resolution_reason: { type: String, default: null },
+      matched_meal_record_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MealRecord', default: null },
+      matched_transaction_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null },
+      matched_transaction_reference: { type: String, default: null }
+    }],
+    review_notes: { type: String, default: null },
+    reviewed_by_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    reviewed_at: { type: Date, default: null }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+offlineReconciliationBatchSchema.index({ batch_date: 1, created_at: -1 });
+offlineReconciliationBatchSchema.index({ device_id: 1, batch_date: 1, created_at: -1 });
+offlineReconciliationBatchSchema.index({ submitted_by_user_id: 1, created_at: -1 });
+
 const qrTokenMetadataSchema = new mongoose.Schema(
   {
     token_jti: { type: String, required: true, unique: true },
@@ -286,6 +330,7 @@ const MenuItem = mongoose.model('MenuItem', menuItemSchema);
 const MealRecord = mongoose.model('MealRecord', mealRecordSchema);
 const Transaction = mongoose.model('Transaction', transactionSchema);
 const ReconciliationRecord = mongoose.model('ReconciliationRecord', reconciliationRecordSchema);
+const OfflineReconciliationBatch = mongoose.model('OfflineReconciliationBatch', offlineReconciliationBatchSchema);
 const QRTokenMetadata = mongoose.model('QRTokenMetadata', qrTokenMetadataSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 
@@ -416,6 +461,7 @@ module.exports = {
   MealRecord,
   Transaction,
   ReconciliationRecord,
+  OfflineReconciliationBatch,
   QRTokenMetadata,
   AuditLog
 };

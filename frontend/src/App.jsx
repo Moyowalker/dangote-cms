@@ -9,6 +9,7 @@ import Workers from './pages/Workers';
 import Tickets from './pages/Tickets';
 import VendorInterface from './pages/VendorInterface';
 import HelpDeskIssue from './pages/HelpDeskIssue';
+import OfflineActivity from './pages/OfflineActivity';
 import Reports from './pages/Reports';
 import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
@@ -55,6 +56,11 @@ export default function App() {
             <Route path="/help-desk" element={
               <ProtectedRoute roles={HELP_DESK_ROLES}>
                 <HelpDeskIssue />
+              </ProtectedRoute>
+            } />
+            <Route path="/offline-activity" element={
+              <ProtectedRoute roles={VENDOR_ROLES}>
+                <OfflineActivity />
               </ProtectedRoute>
             } />
             <Route path="/my-portal" element={

@@ -1079,6 +1079,28 @@ tbody tr:hover {
   font-size: 0.84rem;
   color: var(--brand-muted);
 }
+
+.offline-activity-header-row {
+  gap: 16px;
+}
+
+.offline-activity-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.offline-activity-banner-copy {
+  margin-top: 8px;
+  font-size: 0.88rem;
+  color: inherit;
+}
+
+.offline-activity-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1619,6 +1641,15 @@ tbody tr:hover {
   .dash-stat-icon-wrap { width: 44px; height: 44px; }
   .dash-actions { grid-template-columns: 1fr; }
   .dash-panels-grid { grid-template-columns: 1fr; }
+  .offline-activity-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .offline-activity-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 @media (max-width: 480px) {
   .dash-stats { grid-template-columns: 1fr; }

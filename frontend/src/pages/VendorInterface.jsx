@@ -3,8 +3,10 @@ import client from '../api/client';
 import QrScannerPanel from '../components/QrScannerPanel';
 import {
   enqueueOfflineRedemption,
+  getOfflineDeviceProfile,
   getVendorValidationSnapshot,
   hasPendingOfflineRedemption,
+  recordOfflineActivityBatch,
   readOfflineRedemptionQueue,
   removeOfflineRedemptionEntry,
   storeVendorValidationSnapshot,
@@ -143,6 +145,39 @@ function formatQueueTimestamp(value) {
   return new Date(value).toLocaleTimeString();
 }
 
+function buildOfflineActivitySummary(processedEntries) {
+  const matchedEntries = processedEntries.filter((entry) => entry.client_outcome === 'synced' || entry.client_outcome === 'duplicate').length;
+  const unresolvedEntries = processedEntries.filter((entry) => entry.client_outcome === 'sync_failed').length;
+
+  return {
+    total_entries: processedEntries.length,
+    matched_entries: matchedEntries,
+    unresolved_entries: unresolvedEntries,
+    missing_transaction_links: 0,
+    employee_not_found_entries: 0,
+    client_failed_entries: unresolvedEntries
+  };
+}
+
+function buildOfflineActivityEntries(processedEntries) {
+  return processedEntries.map((entry) => ({
+    local_reference: entry.local_reference,
+    badge_number: entry.badge_number,
+    meal_type: entry.meal_type,
+    queued_at: entry.queued_at,
+    client_outcome: entry.client_outcome,
+    client_error: entry.client_error,
+    employee_name: entry.employee?.name || null,
+    employee_number: entry.employee?.employee_number || null,
+    status: entry.client_outcome === 'sync_failed' ? 'unresolved' : 'matched',
+    resolution_reason: entry.client_outcome === 'duplicate'
+      ? 'Server already had a matching meal redemption for this queued item.'
+      : entry.client_outcome === 'sync_failed'
+        ? (entry.client_error || 'Queued redemption still needs retry.')
+        : 'Queued redemption synced successfully.'
+  }));
+}
+
 export default function VendorInterface() {
   const [lookupMode, setLookupMode] = useState('badge');
   const [badgeNumber, setBadgeNumber] = useState('');
@@ -227,6 +262,7 @@ export default function VendorInterface() {
     let syncedCount = 0;
     let duplicateCount = 0;
     let failureCount = 0;
+    const processedEntries = [];
 
     for (const item of queuedItems) {
       try {
@@ -239,20 +275,48 @@ export default function VendorInterface() {
         });
 
         syncedCount += 1;
+        processedEntries.push({
+          local_reference: item.id,
+          badge_number: item.badgeNumber,
+          meal_type: item.mealType,
+          queued_at: item.queuedAt,
+          client_outcome: 'synced',
+          client_error: null,
+          employee: item.employee || null
+        });
         remainingItems = remainingItems.filter((entry) => entry.id !== item.id);
       } catch (err) {
         if (err.response?.status === 409) {
           duplicateCount += 1;
+          processedEntries.push({
+            local_reference: item.id,
+            badge_number: item.badgeNumber,
+            meal_type: item.mealType,
+            queued_at: item.queuedAt,
+            client_outcome: 'duplicate',
+            client_error: null,
+            employee: item.employee || null
+          });
           remainingItems = remainingItems.filter((entry) => entry.id !== item.id);
           continue;
         }
 
         failureCount += 1;
+        const errorMessage = err.response?.data?.error || err.message || 'Sync failed';
+        processedEntries.push({
+          local_reference: item.id,
+          badge_number: item.badgeNumber,
+          meal_type: item.mealType,
+          queued_at: item.queuedAt,
+          client_outcome: 'sync_failed',
+          client_error: errorMessage,
+          employee: item.employee || null
+        });
         remainingItems = remainingItems.map((entry) => (entry.id === item.id
           ? {
             ...entry,
             attemptCount: Number(entry.attemptCount || 0) + 1,
-            lastError: err.response?.data?.error || err.message || 'Sync failed'
+            lastError: errorMessage
           }
           : entry));
       }
@@ -261,13 +325,60 @@ export default function VendorInterface() {
     writeOfflineRedemptionQueue(remainingItems);
     setOfflineQueue(remainingItems);
 
+    let activityUploadError = null;
+    if (processedEntries.length > 0) {
+      const deviceProfile = getOfflineDeviceProfile();
+      const batchDate = processedEntries[0]?.queued_at
+        ? new Date(processedEntries[0].queued_at).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+      const batchPayload = {
+        device_id: deviceProfile.id,
+        device_label: deviceProfile.label,
+        batch_date: batchDate,
+        canteen_location: 'Main Canteen',
+        redemptions: processedEntries.map((entry) => ({
+          local_reference: entry.local_reference,
+          badge_number: entry.badge_number,
+          meal_type: entry.meal_type,
+          queued_at: entry.queued_at,
+          client_outcome: entry.client_outcome,
+          client_error: entry.client_error
+        }))
+      };
+
+      let uploadedBatch = null;
+      try {
+        const response = await client.post('/reconciliation/offline-batches', batchPayload, {
+          timeout: REQUEST_TIMEOUT_MS
+        });
+        uploadedBatch = response.data;
+      } catch (err) {
+        activityUploadError = err.response?.data?.error || err.message || 'Offline activity upload failed';
+      }
+
+      recordOfflineActivityBatch({
+        id: uploadedBatch?.id || `local-${Date.now()}`,
+        server_batch_id: uploadedBatch?.id || null,
+        recorded_at: uploadedBatch?.created_at || new Date().toISOString(),
+        batch_date: uploadedBatch?.batch_date || batchPayload.batch_date,
+        device_id: uploadedBatch?.device_id || batchPayload.device_id,
+        device_label: uploadedBatch?.device_label || batchPayload.device_label,
+        canteen_location: uploadedBatch?.canteen_location || batchPayload.canteen_location,
+        status: uploadedBatch?.status || (failureCount ? 'needs_review' : 'reconciled'),
+        upload_status: uploadedBatch ? 'uploaded' : 'upload_failed',
+        upload_error: activityUploadError,
+        summary: uploadedBatch?.summary || buildOfflineActivitySummary(processedEntries),
+        entries: uploadedBatch?.entries || buildOfflineActivityEntries(processedEntries)
+      });
+    }
+
     if (syncedCount || duplicateCount) {
       await fetchTransactions();
     }
 
     setSyncState({
       status: failureCount ? 'warning' : 'success',
-      message: `Synced ${syncedCount} queued redemption${syncedCount === 1 ? '' : 's'}${duplicateCount ? `, cleared ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}` : ''}${failureCount ? `, ${failureCount} still pending` : ''}.`
+      message: `Synced ${syncedCount} queued redemption${syncedCount === 1 ? '' : 's'}${duplicateCount ? `, cleared ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}` : ''}${failureCount ? `, ${failureCount} still pending` : ''}${activityUploadError ? '. Activity saved locally; reconciliation upload will need follow-up.' : '.'}`
     });
   }, [fetchTransactions, isOnline]);
 

@@ -4,7 +4,7 @@ jest.mock('../src/database');
 
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, MealRecord, AuditLog, WorkerCategory, Transaction } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord, AuditLog, WorkerCategory, Transaction, OfflineReconciliationBatch } = require('../src/database');
 
 let agent;
 
@@ -18,6 +18,7 @@ beforeEach(async () => {
   await AuditLog.deleteMany({});
   await MealRecord.deleteMany({});
   await Transaction.deleteMany({});
+  await OfflineReconciliationBatch.deleteMany({});
   await Employee.deleteMany({});
   await WorkerCategory.deleteMany({});
 });
@@ -297,6 +298,125 @@ describe('Reconciliation and Reporting Aggregation', () => {
       jest.resetModules();
       jest.doMock('../src/database');
     }
+  });
+
+  test('POST /api/reconciliation/offline-batches stores reconciled offline device activity against confirmed transactions', async () => {
+    await Employee.create({
+      employee_number: 'OFF001',
+      name: 'Offline Batch User',
+      department: 'Ops',
+      badge_number: 'OFF-BATCH-1'
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    await agent.post('/api/tickets/consume').send({
+      badge_number: 'OFF-BATCH-1',
+      meal_type: 'lunch',
+      canteen_location: 'Main Canteen'
+    });
+
+    const res = await agent.post('/api/reconciliation/offline-batches').send({
+      device_id: 'vendor-device-1',
+      device_label: 'Main gate tablet',
+      batch_date: today,
+      canteen_location: 'Main Canteen',
+      redemptions: [
+        {
+          local_reference: 'queue-1',
+          badge_number: 'OFF-BATCH-1',
+          meal_type: 'lunch',
+          client_outcome: 'synced'
+        }
+      ]
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.device_id).toBe('vendor-device-1');
+    expect(res.body.status).toBe('reconciled');
+    expect(res.body.summary.total_entries).toBe(1);
+    expect(res.body.summary.matched_entries).toBe(1);
+    expect(res.body.entries[0].status).toBe('matched');
+    expect(typeof res.body.entries[0].matched_transaction_reference).toBe('string');
+  });
+
+  test('GET /api/reconciliation/offline-batches and /:id expose offline batch history for review', async () => {
+    const created = await OfflineReconciliationBatch.create({
+      device_id: 'vendor-device-2',
+      device_label: 'Annex tablet',
+      batch_date: '2026-05-01',
+      canteen_location: 'Annex',
+      submitted_by_user_id: '000000000000000000000001',
+      submitted_by_role: 'admin',
+      status: 'needs_review',
+      summary: {
+        total_entries: 1,
+        matched_entries: 0,
+        unresolved_entries: 1,
+        missing_transaction_links: 0,
+        employee_not_found_entries: 1,
+        client_failed_entries: 0
+      },
+      entries: [
+        {
+          local_reference: 'queue-2',
+          badge_number: 'UNKNOWN',
+          meal_type: 'lunch',
+          client_outcome: 'synced',
+          status: 'unresolved',
+          resolution_reason: 'Employee not found for badge number'
+        }
+      ]
+    });
+
+    const listRes = await agent.get('/api/reconciliation/offline-batches?date=2026-05-01');
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.total).toBe(1);
+    expect(listRes.body.batches[0].id).toBe(created.id);
+
+    const detailRes = await agent.get(`/api/reconciliation/offline-batches/${created.id}`);
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.id).toBe(created.id);
+    expect(detailRes.body.entries).toHaveLength(1);
+    expect(detailRes.body.entries[0].resolution_reason).toMatch(/employee not found/i);
+  });
+
+  test('PATCH /api/reconciliation/offline-batches/:id/review updates review status and notes', async () => {
+    const batch = await OfflineReconciliationBatch.create({
+      device_id: 'vendor-device-3',
+      batch_date: '2026-05-01',
+      canteen_location: 'Main Canteen',
+      submitted_by_user_id: '000000000000000000000001',
+      submitted_by_role: 'admin',
+      status: 'needs_review',
+      summary: {
+        total_entries: 1,
+        matched_entries: 0,
+        unresolved_entries: 1,
+        missing_transaction_links: 0,
+        employee_not_found_entries: 0,
+        client_failed_entries: 1
+      },
+      entries: [
+        {
+          badge_number: 'OFF-BATCH-3',
+          meal_type: 'lunch',
+          client_outcome: 'sync_failed',
+          client_error: 'Temporary network loss',
+          status: 'unresolved',
+          resolution_reason: 'No confirmed meal record found for this offline redemption'
+        }
+      ]
+    });
+
+    const res = await agent.patch(`/api/reconciliation/offline-batches/${batch.id}/review`).send({
+      status: 'rejected',
+      review_notes: 'Device queue requires manual follow-up'
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('rejected');
+    expect(res.body.review_notes).toBe('Device queue requires manual follow-up');
+    expect(res.body.reviewed_at).toBeTruthy();
   });
 
   test('GET /api/reports/daily returns aggregation summary and details', async () => {

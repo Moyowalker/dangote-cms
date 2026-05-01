@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import VendorInterface from './VendorInterface';
 import client from '../api/client';
-import { readOfflineRedemptionQueue, storeVendorValidationSnapshot } from '../utils/offlineVendorQueue';
+import { readOfflineActivityHistory, readOfflineRedemptionQueue, storeVendorValidationSnapshot } from '../utils/offlineVendorQueue';
 
 vi.mock('../components/QrScannerPanel', () => ({
   default: function MockQrScannerPanel({ open, onDetected, onClose }) {
@@ -304,6 +304,7 @@ describe('VendorInterface', () => {
 
   it('syncs queued offline redemptions after the connection returns', async () => {
     const user = userEvent.setup();
+    const today = new Date().toISOString().split('T')[0];
 
     storeVendorValidationSnapshot({
       badgeNumber: 'BG-3001',
@@ -338,6 +339,25 @@ describe('VendorInterface', () => {
         },
         remaining: 0
       }
+    }).mockResolvedValueOnce({
+      data: {
+        id: 'batch-sync-001',
+        created_at: '2099-03-23T12:00:00.000Z',
+        batch_date: today,
+        device_id: 'device-sync-001',
+        device_label: 'Dangote Vendor Device',
+        canteen_location: 'Main Canteen',
+        status: 'reconciled',
+        summary: {
+          total_entries: 1,
+          matched_entries: 1,
+          unresolved_entries: 0,
+          missing_transaction_links: 0,
+          employee_not_found_entries: 0,
+          client_failed_entries: 0
+        },
+        entries: []
+      }
     });
 
     render(<VendorInterface />);
@@ -364,6 +384,20 @@ describe('VendorInterface', () => {
     await waitFor(() => {
       expect(readOfflineRedemptionQueue()).toHaveLength(0);
     });
+    await waitFor(() => {
+      expect(client.post).toHaveBeenNthCalledWith(2, '/reconciliation/offline-batches', expect.objectContaining({
+        batch_date: today,
+        canteen_location: 'Main Canteen',
+        redemptions: [expect.objectContaining({
+          badge_number: 'BG-3001',
+          meal_type: 'lunch',
+          client_outcome: 'synced'
+        })]
+      }), {
+        timeout: 8000
+      });
+    });
+    expect(readOfflineActivityHistory()).toHaveLength(1);
   });
 
   it('lets the operator remove a queued offline redemption from the device', async () => {
@@ -405,6 +439,7 @@ describe('VendorInterface', () => {
 
   it('retries a failed queued entry only when the operator asks for it', async () => {
     const user = userEvent.setup();
+    const today = new Date().toISOString().split('T')[0];
 
     storeVendorValidationSnapshot({
       badgeNumber: 'BG-5001',
@@ -430,6 +465,25 @@ describe('VendorInterface', () => {
         }
       },
       message: 'Temporary backend failure'
+    }).mockResolvedValueOnce({
+      data: {
+        id: 'batch-failed-001',
+        created_at: '2099-03-23T12:05:00.000Z',
+        batch_date: today,
+        device_id: 'device-failed-001',
+        device_label: 'Dangote Vendor Device',
+        canteen_location: 'Main Canteen',
+        status: 'needs_review',
+        summary: {
+          total_entries: 1,
+          matched_entries: 0,
+          unresolved_entries: 1,
+          missing_transaction_links: 0,
+          employee_not_found_entries: 0,
+          client_failed_entries: 1
+        },
+        entries: []
+      }
     });
 
     render(<VendorInterface />);
@@ -443,7 +497,7 @@ describe('VendorInterface', () => {
 
     expect(await screen.findByText(/1 still pending/i)).toBeInTheDocument();
     expect(screen.getByText(/last error: temporary backend failure/i)).toBeInTheDocument();
-    expect(client.post).toHaveBeenCalledTimes(1);
+    expect(client.post).toHaveBeenCalledTimes(2);
 
     client.post.mockResolvedValueOnce({
       data: {
@@ -461,15 +515,35 @@ describe('VendorInterface', () => {
         },
         remaining: 0
       }
+    }).mockResolvedValueOnce({
+      data: {
+        id: 'batch-retry-001',
+        created_at: '2099-03-23T12:10:00.000Z',
+        batch_date: today,
+        device_id: 'device-retry-001',
+        device_label: 'Dangote Vendor Device',
+        canteen_location: 'Main Canteen',
+        status: 'reconciled',
+        summary: {
+          total_entries: 1,
+          matched_entries: 1,
+          unresolved_entries: 0,
+          missing_transaction_links: 0,
+          employee_not_found_entries: 0,
+          client_failed_entries: 0
+        },
+        entries: []
+      }
     });
 
     await user.click(screen.getByRole('button', { name: /retry item/i }));
 
     await waitFor(() => {
-      expect(client.post).toHaveBeenCalledTimes(2);
+      expect(client.post).toHaveBeenCalledTimes(4);
     });
     await waitFor(() => {
       expect(readOfflineRedemptionQueue()).toHaveLength(0);
     });
+    expect(readOfflineActivityHistory()).toHaveLength(2);
   });
 });

@@ -38,6 +38,9 @@ export default function Navbar() {
         {isVendorRole(user.role) && (
           <li><NavLink to="/scan">Scan QR</NavLink></li>
         )}
+        {isVendorRole(user.role) && (
+          <li><NavLink to="/offline-activity">Offline Activity</NavLink></li>
+        )}
         {canAccessHelpDesk(user.role) && (
           <li><NavLink to="/help-desk">Help Desk</NavLink></li>
         )}
