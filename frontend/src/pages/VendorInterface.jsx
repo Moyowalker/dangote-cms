@@ -1,6 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import client from '../api/client';
 import QrScannerPanel from '../components/QrScannerPanel';
+import {
+  enqueueOfflineRedemption,
+  getVendorValidationSnapshot,
+  hasPendingOfflineRedemption,
+  readOfflineRedemptionQueue,
+  removeOfflineRedemptionEntry,
+  storeVendorValidationSnapshot,
+  updateOfflineRedemptionEntry,
+  writeOfflineRedemptionQueue
+} from '../utils/offlineVendorQueue';
 
 const REQUEST_TIMEOUT_MS = 8000;
 const PENDING_ATTEMPT_STORAGE_KEY = 'dangote-vendor-pending-attempt';
@@ -15,6 +25,10 @@ function buildInitialValidationState() {
 
 function buildInitialRedeemState() {
   return { status: 'idle', data: null, error: null, attempt: null, recoveryMessage: null };
+}
+
+function buildInitialSyncState() {
+  return { status: 'idle', message: '' };
 }
 
 function normalizeTransactionsPayload(payload) {
@@ -108,6 +122,27 @@ function renderWorkerIdentity(employee, sourceLabel = null) {
   );
 }
 
+function buildCachedValidationData(snapshot) {
+  if (!snapshot?.data) {
+    return null;
+  }
+
+  return {
+    ...snapshot.data,
+    offline_cached: true,
+    cached_at: snapshot.cachedAt,
+    message: snapshot.data?.message || 'Using the last successful same-day validation stored on this device while offline.'
+  };
+}
+
+function formatQueueTimestamp(value) {
+  if (!value) {
+    return 'Unknown time';
+  }
+
+  return new Date(value).toLocaleTimeString();
+}
+
 export default function VendorInterface() {
   const [lookupMode, setLookupMode] = useState('badge');
   const [badgeNumber, setBadgeNumber] = useState('');
@@ -120,6 +155,9 @@ export default function VendorInterface() {
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [offlineQueue, setOfflineQueue] = useState([]);
+  const [syncState, setSyncState] = useState(buildInitialSyncState);
+  const previousOnlineRef = useRef(isOnline);
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -135,6 +173,10 @@ export default function VendorInterface() {
   }, []);
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
+
+  useEffect(() => {
+    setOfflineQueue(readOfflineRedemptionQueue());
+  }, []);
 
   useEffect(() => {
     const pendingAttempt = readPendingAttempt();
@@ -171,14 +213,86 @@ export default function VendorInterface() {
     };
   }, []);
 
+  const syncOfflineQueue = useCallback(async (targetEntryId = null) => {
+    const queuedItems = targetEntryId
+      ? readOfflineRedemptionQueue().filter((item) => item.id === targetEntryId)
+      : readOfflineRedemptionQueue();
+    if (!queuedItems.length || !isOnline) {
+      return;
+    }
+
+    setSyncState({ status: 'processing', message: `Syncing ${queuedItems.length} queued redemption${queuedItems.length === 1 ? '' : 's'}...` });
+
+    let remainingItems = [...queuedItems];
+    let syncedCount = 0;
+    let duplicateCount = 0;
+    let failureCount = 0;
+
+    for (const item of queuedItems) {
+      try {
+        await client.post('/tickets/consume', {
+          badge_number: item.badgeNumber,
+          meal_type: item.mealType,
+          canteen_location: item.canteenLocation
+        }, {
+          timeout: REQUEST_TIMEOUT_MS
+        });
+
+        syncedCount += 1;
+        remainingItems = remainingItems.filter((entry) => entry.id !== item.id);
+      } catch (err) {
+        if (err.response?.status === 409) {
+          duplicateCount += 1;
+          remainingItems = remainingItems.filter((entry) => entry.id !== item.id);
+          continue;
+        }
+
+        failureCount += 1;
+        remainingItems = remainingItems.map((entry) => (entry.id === item.id
+          ? {
+            ...entry,
+            attemptCount: Number(entry.attemptCount || 0) + 1,
+            lastError: err.response?.data?.error || err.message || 'Sync failed'
+          }
+          : entry));
+      }
+    }
+
+    writeOfflineRedemptionQueue(remainingItems);
+    setOfflineQueue(remainingItems);
+
+    if (syncedCount || duplicateCount) {
+      await fetchTransactions();
+    }
+
+    setSyncState({
+      status: failureCount ? 'warning' : 'success',
+      message: `Synced ${syncedCount} queued redemption${syncedCount === 1 ? '' : 's'}${duplicateCount ? `, cleared ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}` : ''}${failureCount ? `, ${failureCount} still pending` : ''}.`
+    });
+  }, [fetchTransactions, isOnline]);
+
+  useEffect(() => {
+    const wasOnline = previousOnlineRef.current;
+    previousOnlineRef.current = isOnline;
+
+    if (!wasOnline && isOnline && offlineQueue.length > 0) {
+      syncOfflineQueue();
+    }
+  }, [isOnline, offlineQueue.length, syncOfflineQueue]);
+
   const isValidating = validationState.status === 'processing';
   const isRedeeming = redeemState.status === 'processing';
   const isBusy = isValidating || isRedeeming || checkingOutcome;
-  const disableActions = isBusy || !isOnline;
+  const disableActions = isBusy;
   const activeBadgeNumber = lookupMode === 'qr'
     ? validationState.data?.employee?.badge_number || ''
     : badgeNumber.trim();
   const requiresIdentityConfirmation = lookupMode === 'qr' && Boolean(activeBadgeNumber);
+  const canRedeemOffline = !isOnline
+    && lookupMode === 'badge'
+    && validationState.status === 'succeeded'
+    && validationState.data?.offline_cached
+    && validationState.data?.can_consume;
 
   async function runValidation({ mode = lookupMode, badgeInput = badgeNumber, qrInput = qrToken } = {}) {
     const normalizedBadge = badgeInput.trim();
@@ -191,6 +305,32 @@ export default function VendorInterface() {
     setValidationState({ status: 'processing', data: null, error: null });
     setRedeemState(buildInitialRedeemState());
     setIdentityConfirmed(false);
+
+    if (!isOnline) {
+      if (!isBadgeLookup) {
+        setValidationState({
+          status: 'failed',
+          data: null,
+          error: 'QR token validation requires a live connection. Switch to badge lookup with a cached worker validation on this device.'
+        });
+        return;
+      }
+
+      const cachedSnapshot = getVendorValidationSnapshot({ badgeNumber: normalizedBadge, mealType });
+      const cachedData = buildCachedValidationData(cachedSnapshot);
+
+      if (cachedData) {
+        setValidationState({ status: 'succeeded', data: cachedData, error: null });
+      } else {
+        setValidationState({
+          status: 'failed',
+          data: null,
+          error: 'This badge has not been validated online on this device today. Reconnect before serving or use another connected device.'
+        });
+      }
+      return;
+    }
+
     try {
       const res = isBadgeLookup
         ? await client.get(`/tickets/validate/${encodeURIComponent(normalizedBadge)}`, {
@@ -204,6 +344,14 @@ export default function VendorInterface() {
         }, {
           timeout: REQUEST_TIMEOUT_MS
         });
+
+      if (isBadgeLookup) {
+        storeVendorValidationSnapshot({
+          badgeNumber: normalizedBadge,
+          mealType,
+          data: res.data
+        });
+      }
 
       setValidationState({ status: 'succeeded', data: res.data, error: null });
     } catch (err) {
@@ -233,6 +381,53 @@ export default function VendorInterface() {
     const normalizedBadge = activeBadgeNumber;
     if (!normalizedBadge) return;
     if (lookupMode === 'qr' && !identityConfirmed) return;
+
+    if (!isOnline) {
+      if (!canRedeemOffline) {
+        return;
+      }
+
+      if (hasPendingOfflineRedemption({ badgeNumber: normalizedBadge, mealType })) {
+        setRedeemState({
+          status: 'failed',
+          data: null,
+          error: 'An offline redemption for this worker and meal is already queued on this device.',
+          attempt: null,
+          recoveryMessage: null
+        });
+        return;
+      }
+
+      const queuedEntry = enqueueOfflineRedemption({
+        badgeNumber: normalizedBadge,
+        mealType,
+        employee: validationState.data?.employee || null,
+        canteenLocation: 'Main Canteen'
+      });
+
+      const nextQueue = readOfflineRedemptionQueue();
+      setOfflineQueue(nextQueue);
+      setRedeemState({
+        status: 'queued',
+        data: {
+          employee: validationState.data?.employee || null,
+          record: {
+            id: queuedEntry.id,
+            meal_type: mealType
+          },
+          transaction: null,
+          remaining: validationState.data?.remaining ?? null
+        },
+        error: null,
+        attempt: null,
+        recoveryMessage: 'Queued locally. This device will sync the redemption automatically when the network returns.'
+      });
+      setSyncState({ status: 'warning', message: `Offline queue now has ${nextQueue.length} pending redemption${nextQueue.length === 1 ? '' : 's'}.` });
+      setBadgeNumber('');
+      setQrToken('');
+      setValidationState(buildInitialValidationState());
+      return;
+    }
 
     const attempt = {
       badgeNumber: normalizedBadge,
@@ -330,6 +525,27 @@ export default function VendorInterface() {
     }
   }
 
+  function handleRemoveQueuedEntry(entryId) {
+    const nextQueue = removeOfflineRedemptionEntry(entryId);
+    setOfflineQueue(nextQueue);
+    setSyncState({
+      status: nextQueue.length ? 'warning' : 'success',
+      message: nextQueue.length
+        ? `${nextQueue.length} queued redemption${nextQueue.length === 1 ? '' : 's'} remain on this device.`
+        : 'Offline queue cleared on this device.'
+    });
+  }
+
+  async function handleRetryQueuedEntry(entryId) {
+    if (!isOnline) {
+      return;
+    }
+
+    const nextQueue = updateOfflineRedemptionEntry(entryId, { lastError: null });
+    setOfflineQueue(nextQueue);
+    await syncOfflineQueue(entryId);
+  }
+
   return (
     <div className="pg-wrap">
       <div className="pg-header vendor">
@@ -350,13 +566,60 @@ export default function VendorInterface() {
 
       {!isOnline && (
         <div className="card vendor-status-banner offline">
-          <strong>Offline:</strong> the network is down. Do not retry a worker until the connection returns and you check the latest transaction.
+          <strong>Offline:</strong> the network is down. Use badge lookup only for workers already validated online on this device today. Any offline redemption will be queued and synced later.
         </div>
       )}
 
       {isOnline && redeemState.status === 'unknown' && (
         <div className="card vendor-status-banner warning">
           <strong>Recovery mode:</strong> this screen is holding a previous redemption attempt for verification. Check the latest transaction before serving or retrying.
+        </div>
+      )}
+
+      {(offlineQueue.length > 0 || syncState.status !== 'idle') && (
+        <div className={`card vendor-status-banner ${syncState.status === 'success' ? 'info' : syncState.status === 'warning' ? 'warning' : ''}`}>
+          <strong>Offline queue:</strong> {syncState.message || `${offlineQueue.length} redemption${offlineQueue.length === 1 ? '' : 's'} pending sync.`}
+          {isOnline && offlineQueue.length > 0 ? (
+            <button type="button" className="btn btn-secondary vendor-sync-button" onClick={syncOfflineQueue} disabled={syncState.status === 'processing'}>
+              {syncState.status === 'processing' ? 'Syncing...' : 'Sync queued redemptions'}
+            </button>
+          ) : null}
+          {offlineQueue.length > 0 ? (
+            <div className="vendor-offline-queue-list">
+              {offlineQueue.map((item) => (
+                <div key={item.id} className="vendor-offline-queue-item">
+                  <div>
+                    <strong>{item.employee?.name || item.badgeNumber}</strong>
+                    <span>{item.mealType} queued at {formatQueueTimestamp(item.queuedAt)}</span>
+                    {item.lastError ? <span className="vendor-offline-queue-error">Last error: {item.lastError}</span> : null}
+                  </div>
+                  <div className="vendor-offline-queue-actions">
+                    <span className={`badge ${item.lastError ? 'badge-warning' : 'badge-secondary'}`}>
+                      {item.lastError ? 'Retry pending' : 'Pending sync'}
+                    </span>
+                    {isOnline ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleRetryQueuedEntry(item.id)}
+                        disabled={syncState.status === 'processing'}
+                      >
+                        Retry Item
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleRemoveQueuedEntry(item.id)}
+                      disabled={syncState.status === 'processing'}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -446,7 +709,7 @@ export default function VendorInterface() {
             <button
               type="submit"
               className="btn btn-secondary"
-              disabled={disableActions || (lookupMode === 'badge' ? !badgeNumber.trim() : !qrToken.trim())}
+              disabled={disableActions || (lookupMode === 'badge' ? !badgeNumber.trim() : !isOnline || !qrToken.trim())}
               style={{ padding: '10px 32px', fontSize: '1rem', marginTop: '8px' }}
             >
               {isValidating ? 'Validating...' : 'Validate'}
@@ -455,10 +718,10 @@ export default function VendorInterface() {
               type="button"
               className="btn btn-primary"
               onClick={handleRedeem}
-              disabled={disableActions || !activeBadgeNumber || (requiresIdentityConfirmation && !identityConfirmed)}
+              disabled={disableActions || !activeBadgeNumber || (requiresIdentityConfirmation && !identityConfirmed) || (!isOnline && !canRedeemOffline)}
               style={{ padding: '10px 32px', fontSize: '1rem', marginTop: '8px', marginLeft: '10px' }}
             >
-              {isRedeeming ? 'Redeeming...' : 'Redeem'}
+              {isRedeeming ? 'Redeeming...' : !isOnline && canRedeemOffline ? 'Queue Redeem' : 'Redeem'}
             </button>
           </form>
 
@@ -477,6 +740,9 @@ export default function VendorInterface() {
                   <p><strong>Meal Type:</strong> {validationState.data?.meal_type}</p>
                   <p><strong>Status:</strong> {validationState.data?.can_consume ? 'Eligible' : 'Already consumed'}</p>
                   <p><strong>Remaining balance:</strong> {validationState.data?.remaining ?? 0}</p>
+                  {validationState.data?.offline_cached && (
+                    <p><strong>Offline mode:</strong> Using cached same-day validation from {formatQueueTimestamp(validationState.data.cached_at)}. If you queue this redemption now, it will sync when the device reconnects.</p>
+                  )}
                   {!validationState.data?.can_consume && validationState.data?.message && (
                     <p><strong>Next step:</strong> {validationState.data.message}</p>
                   )}
@@ -501,11 +767,19 @@ export default function VendorInterface() {
           ) : null}
 
           {redeemState.status !== 'idle' && (
-            <div className={`vendor-result ${redeemState.status === 'processing' ? 'info' : redeemState.status === 'succeeded' ? 'success' : redeemState.status === 'unknown' ? 'warning' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
+            <div className={`vendor-result ${redeemState.status === 'processing' ? 'info' : redeemState.status === 'succeeded' ? 'success' : redeemState.status === 'queued' || redeemState.status === 'unknown' ? 'warning' : 'error'}`} style={{ maxWidth: '500px', margin: '20px auto 0' }}>
               {redeemState.status === 'processing' ? (
                 <>
                   <h3 style={{ color: '#0c5460', marginBottom: '8px' }}>Processing redemption</h3>
                   <p>Do not resubmit while the backend is processing this meal.</p>
+                </>
+              ) : redeemState.status === 'queued' ? (
+                <>
+                  <h3 style={{ color: '#856404', marginBottom: '8px' }}>Queued For Sync</h3>
+                  {redeemState.data?.employee ? renderWorkerIdentity(redeemState.data.employee) : null}
+                  <p><strong>Meal Type:</strong> {redeemState.data?.record?.meal_type}</p>
+                  <p><strong>Queue reference:</strong> #{redeemState.data?.record?.id}</p>
+                  {redeemState.recoveryMessage ? <p><strong>Status note:</strong> {redeemState.recoveryMessage}</p> : null}
                 </>
               ) : redeemState.status === 'succeeded' ? (
                 <>

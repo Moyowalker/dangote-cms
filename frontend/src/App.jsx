@@ -8,11 +8,13 @@ import Dashboard from './pages/Dashboard';
 import Workers from './pages/Workers';
 import Tickets from './pages/Tickets';
 import VendorInterface from './pages/VendorInterface';
+import HelpDeskIssue from './pages/HelpDeskIssue';
 import Reports from './pages/Reports';
 import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
 import MenuManagement from './pages/MenuManagement';
-import { REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
+import PwaInstallBanner from './components/PwaInstallBanner';
+import { HELP_DESK_ROLES, REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
 
 export default function App() {
   const location = useLocation();
@@ -23,6 +25,7 @@ export default function App() {
       <div className="app-shell">
         {isLoginRoute ? null : <Navbar />}
         <main className="app-main">
+          <PwaInstallBanner />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -48,6 +51,11 @@ export default function App() {
             } />
             <Route path="/vendor" element={
               <Navigate to="/scan" replace />
+            } />
+            <Route path="/help-desk" element={
+              <ProtectedRoute roles={HELP_DESK_ROLES}>
+                <HelpDeskIssue />
+              </ProtectedRoute>
             } />
             <Route path="/my-portal" element={
               <ProtectedRoute roles={['employee']}>

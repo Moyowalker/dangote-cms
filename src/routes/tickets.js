@@ -75,6 +75,18 @@ function formatSelfServiceEmployee(employee) {
   return payload;
 }
 
+function canActorIssueQrTokenForEmployee(actor, employee) {
+  const role = canonicalizeRole(actor?.role);
+
+  if (role === ROLE.ADMIN || role === ROLE.VENDOR) {
+    return true;
+  }
+
+  return role === ROLE.EMPLOYEE
+    && actor?.employee_id
+    && String(actor.employee_id) === String(employee?._id);
+}
+
 router.get('/self-service-summary', requireAuth, async (req, res) => {
   try {
     const actor = req.session.user;
@@ -183,6 +195,25 @@ router.post('/qr-token', requireAuth, async (req, res) => {
         metadata: { employee_id: employee_id || null, badge_number: badge_number || null }
       });
       return sendError(res, 404, 'Employee not found', 'NOT_FOUND');
+    }
+
+    if (!canActorIssueQrTokenForEmployee(actor, employee)) {
+      await safeWriteAuditLog({
+        actor_user_id: actor?.id,
+        actor_role: actor?.role,
+        action: 'ticket.qr.issue',
+        entity_type: 'employee',
+        entity_id: employee.id,
+        outcome: 'failure',
+        reason: 'QR token issuance is only allowed for operational users or the linked employee profile',
+        metadata: { employee_id: employee.id, badge_number: employee.badge_number }
+      });
+      return sendError(
+        res,
+        403,
+        'QR token issuance is only allowed for operational users or the linked employee profile',
+        'FORBIDDEN'
+      );
     }
 
     try {

@@ -45,6 +45,68 @@ body {
   flex: 1;
 }
 
+.pwa-banner-wrap {
+  max-width: 1200px;
+  margin: 16px auto 0;
+  padding: 0 16px;
+}
+
+.pwa-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(90deg, rgba(16, 27, 103, 0.96), rgba(24, 41, 128, 0.92));
+  color: white;
+  border: 1px solid rgba(229, 106, 84, 0.35);
+  border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(16, 27, 103, 0.18);
+  padding: 16px 18px;
+}
+
+.pwa-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pwa-banner-copy strong {
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+}
+
+.pwa-banner-copy span {
+  font-size: 0.84rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.pwa-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-pwa-install,
+.btn-pwa-dismiss {
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-pwa-install {
+  background: var(--brand-coral);
+  color: white;
+}
+
+.btn-pwa-dismiss {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
 .brand-lockup {
   display: inline-flex;
   align-items: center;
@@ -983,6 +1045,39 @@ tbody tr:hover {
   background: #fff3cd;
   border: 1px solid var(--brand-warning);
   color: #856404;
+}
+
+.vendor-sync-button {
+  margin-left: 12px;
+}
+
+.vendor-offline-queue-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vendor-offline-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(16, 27, 103, 0.08);
+  border-radius: 12px;
+}
+
+.vendor-offline-queue-item div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vendor-offline-queue-item span:not(.badge) {
+  font-size: 0.84rem;
+  color: var(--brand-muted);
 }
 .sr-only {
   position: absolute;

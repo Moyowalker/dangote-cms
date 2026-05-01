@@ -37,6 +37,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Reconciliation' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Scan QR' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Help Desk' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'My Portal' })).not.toBeInTheDocument();
   });
 
@@ -55,6 +56,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Menu Items' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tickets' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Scan QR' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Help Desk' })).toBeInTheDocument();
   });
 
   it('shows only self-service navigation for employee users', () => {

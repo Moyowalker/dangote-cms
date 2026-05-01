@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import VendorInterface from './VendorInterface';
 import client from '../api/client';
+import { readOfflineRedemptionQueue, storeVendorValidationSnapshot } from '../utils/offlineVendorQueue';
 
 vi.mock('../components/QrScannerPanel', () => ({
   default: function MockQrScannerPanel({ open, onDetected, onClose }) {
@@ -31,6 +32,8 @@ describe('VendorInterface', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     client.get.mockResolvedValue({ data: [] });
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -260,5 +263,213 @@ describe('VendorInterface', () => {
     });
 
     await screen.findByText(/meal recorded successfully/i);
+  });
+
+  it('uses cached same-day badge validation offline and queues redemption for later sync', async () => {
+    const user = userEvent.setup();
+
+    storeVendorValidationSnapshot({
+      badgeNumber: 'BG-2001',
+      mealType: 'lunch',
+      data: {
+        employee: {
+          id: 'emp-2001',
+          name: 'Offline Worker',
+          employee_number: 'EMP-2001',
+          badge_number: 'BG-2001',
+          department: 'Warehouse'
+        },
+        can_consume: true,
+        meal_type: 'lunch',
+        remaining: 1,
+        date: new Date().toISOString().split('T')[0]
+      }
+    });
+
+    render(<VendorInterface />);
+
+    window.dispatchEvent(new Event('offline'));
+
+    await user.type(screen.getByRole('textbox', { name: /badge number/i }), 'BG-2001');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(await screen.findByText(/using cached same-day validation/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /queue redeem/i })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /queue redeem/i }));
+
+    expect(await screen.findByText(/queued for sync/i)).toBeInTheDocument();
+    expect(readOfflineRedemptionQueue()).toHaveLength(1);
+  });
+
+  it('syncs queued offline redemptions after the connection returns', async () => {
+    const user = userEvent.setup();
+
+    storeVendorValidationSnapshot({
+      badgeNumber: 'BG-3001',
+      mealType: 'lunch',
+      data: {
+        employee: {
+          id: 'emp-3001',
+          name: 'Queued Worker',
+          employee_number: 'EMP-3001',
+          badge_number: 'BG-3001'
+        },
+        can_consume: true,
+        meal_type: 'lunch',
+        remaining: 1,
+        date: new Date().toISOString().split('T')[0]
+      }
+    });
+
+    client.post.mockResolvedValueOnce({
+      data: {
+        employee: {
+          name: 'Queued Worker',
+          employee_number: 'EMP-3001',
+          badge_number: 'BG-3001'
+        },
+        record: {
+          id: 'txn-sync-001',
+          meal_type: 'lunch'
+        },
+        transaction: {
+          transaction_reference: 'txn-sync-001'
+        },
+        remaining: 0
+      }
+    });
+
+    render(<VendorInterface />);
+
+    window.dispatchEvent(new Event('offline'));
+    await user.type(screen.getByRole('textbox', { name: /badge number/i }), 'BG-3001');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+    await user.click(await screen.findByRole('button', { name: /queue redeem/i }));
+
+    expect(readOfflineRedemptionQueue()).toHaveLength(1);
+
+    window.dispatchEvent(new Event('online'));
+
+    await waitFor(() => {
+      expect(client.post).toHaveBeenCalledWith('/tickets/consume', {
+        badge_number: 'BG-3001',
+        meal_type: 'lunch',
+        canteen_location: 'Main Canteen'
+      }, {
+        timeout: 8000
+      });
+    });
+
+    await waitFor(() => {
+      expect(readOfflineRedemptionQueue()).toHaveLength(0);
+    });
+  });
+
+  it('lets the operator remove a queued offline redemption from the device', async () => {
+    const user = userEvent.setup();
+
+    storeVendorValidationSnapshot({
+      badgeNumber: 'BG-4001',
+      mealType: 'lunch',
+      data: {
+        employee: {
+          id: 'emp-4001',
+          name: 'Removable Worker',
+          employee_number: 'EMP-4001',
+          badge_number: 'BG-4001'
+        },
+        can_consume: true,
+        meal_type: 'lunch',
+        remaining: 1,
+        date: new Date().toISOString().split('T')[0]
+      }
+    });
+
+    render(<VendorInterface />);
+
+    window.dispatchEvent(new Event('offline'));
+    await user.type(screen.getByRole('textbox', { name: /badge number/i }), 'BG-4001');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+    await user.click(await screen.findByRole('button', { name: /queue redeem/i }));
+
+    expect(readOfflineRedemptionQueue()).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: /remove/i }));
+
+    await waitFor(() => {
+      expect(readOfflineRedemptionQueue()).toHaveLength(0);
+    });
+    expect(await screen.findByText(/offline queue cleared on this device/i)).toBeInTheDocument();
+  });
+
+  it('retries a failed queued entry only when the operator asks for it', async () => {
+    const user = userEvent.setup();
+
+    storeVendorValidationSnapshot({
+      badgeNumber: 'BG-5001',
+      mealType: 'lunch',
+      data: {
+        employee: {
+          id: 'emp-5001',
+          name: 'Retry Worker',
+          employee_number: 'EMP-5001',
+          badge_number: 'BG-5001'
+        },
+        can_consume: true,
+        meal_type: 'lunch',
+        remaining: 1,
+        date: new Date().toISOString().split('T')[0]
+      }
+    });
+
+    client.post.mockRejectedValueOnce({
+      response: {
+        data: {
+          error: 'Temporary backend failure'
+        }
+      },
+      message: 'Temporary backend failure'
+    });
+
+    render(<VendorInterface />);
+
+    window.dispatchEvent(new Event('offline'));
+    await user.type(screen.getByRole('textbox', { name: /badge number/i }), 'BG-5001');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+    await user.click(await screen.findByRole('button', { name: /queue redeem/i }));
+
+    window.dispatchEvent(new Event('online'));
+
+    expect(await screen.findByText(/1 still pending/i)).toBeInTheDocument();
+    expect(screen.getByText(/last error: temporary backend failure/i)).toBeInTheDocument();
+    expect(client.post).toHaveBeenCalledTimes(1);
+
+    client.post.mockResolvedValueOnce({
+      data: {
+        employee: {
+          name: 'Retry Worker',
+          employee_number: 'EMP-5001',
+          badge_number: 'BG-5001'
+        },
+        record: {
+          id: 'txn-retry-001',
+          meal_type: 'lunch'
+        },
+        transaction: {
+          transaction_reference: 'txn-retry-001'
+        },
+        remaining: 0
+      }
+    });
+
+    await user.click(screen.getByRole('button', { name: /retry item/i }));
+
+    await waitFor(() => {
+      expect(client.post).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(readOfflineRedemptionQueue()).toHaveLength(0);
+    });
   });
 });

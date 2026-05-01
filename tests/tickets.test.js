@@ -321,6 +321,55 @@ describe('Tickets Routes', () => {
     expect(res.body.ttl_seconds).toBe(600);
   });
 
+  test('POST /api/tickets/qr-token allows an employee to issue a signed QR token for their own profile', async () => {
+    const password = await bcrypt.hash('employee-self-pass', 10);
+    await User.create({
+      username: 'employee.self',
+      password,
+      role: 'employee',
+      employee_id: testEmployee._id
+    });
+
+    const employeeAgent = request.agent(app);
+    await employeeAgent.post('/api/auth/login').send({ username: 'employee.self', password: 'employee-self-pass' });
+
+    const res = await employeeAgent.post('/api/tickets/qr-token').send({
+      employee_id: testEmployee.id,
+      ttl_seconds: 600
+    });
+
+    expect(res.status).toBe(201);
+    expect(typeof res.body.token).toBe('string');
+    expect(res.body.employee.badge_number).toBe('BADGE001');
+  });
+
+  test('POST /api/tickets/qr-token rejects an employee issuing a token for another worker', async () => {
+    const otherEmployee = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Other Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+    const password = await bcrypt.hash('employee-other-pass', 10);
+    await User.create({
+      username: 'employee.other',
+      password,
+      role: 'employee',
+      employee_id: testEmployee._id
+    });
+
+    const employeeAgent = request.agent(app);
+    await employeeAgent.post('/api/auth/login').send({ username: 'employee.other', password: 'employee-other-pass' });
+
+    const res = await employeeAgent.post('/api/tickets/qr-token').send({
+      employee_id: otherEmployee.id,
+      ttl_seconds: 600
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
   test('POST /api/tickets/validate-token validates signed QR token server-side', async () => {
     const issued = await agent.post('/api/tickets/qr-token').send({
       badge_number: 'BADGE001'
