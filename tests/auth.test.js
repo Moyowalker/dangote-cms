@@ -5,7 +5,7 @@ jest.mock('../src/database');
 const request = require('supertest');
 const bcrypt = require('bcrypt');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, User, Employee } = require('../src/database');
+const { initializeDatabase, closeDatabase, User, Employee, AuditLog } = require('../src/database');
 const { resetRequestMetrics } = require('../src/services/requestMetricsService');
 
 beforeAll(async () => {
@@ -14,6 +14,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetRequestMetrics();
+  return AuditLog.deleteMany({});
 });
 
 afterAll(async () => {
@@ -153,6 +154,12 @@ describe('Auth Routes', () => {
     expect(res.body.user).toBeDefined();
     expect(res.body.user.username).toBe('admin');
     expect(res.body.user.role).toBe('admin');
+
+    const auditEntries = await AuditLog.find({ action: 'auth.login' });
+    expect(auditEntries).toHaveLength(1);
+    expect(auditEntries[0].outcome).toBe('success');
+    expect(auditEntries[0].metadata.request_body.username).toBe('admin');
+    expect(auditEntries[0].metadata.request_body.password).toBe('[REDACTED]');
   });
 
   test('POST /api/auth/login with invalid credentials returns 401', async () => {
@@ -160,6 +167,12 @@ describe('Auth Routes', () => {
       .post('/api/auth/login')
       .send({ username: 'admin', password: 'wrongpassword' });
     expect(res.status).toBe(401);
+
+    const auditEntries = await AuditLog.find({ action: 'auth.login' });
+    expect(auditEntries).toHaveLength(1);
+    expect(auditEntries[0].outcome).toBe('failure');
+    expect(auditEntries[0].reason).toBe('Invalid credentials');
+    expect(auditEntries[0].metadata.request_body.password).toBe('[REDACTED]');
   });
 
   test('GET /api/auth/me without session returns 401', async () => {

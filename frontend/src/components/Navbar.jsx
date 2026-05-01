@@ -29,6 +29,7 @@ export default function Navbar() {
           <>
             <li><NavLink to="/menu">Menu Items</NavLink></li>
             <li><NavLink to="/reports">Reports</NavLink></li>
+            <li><NavLink to="/audit">Audit Trail</NavLink></li>
             <li><NavLink to="/reconciliation">Reconciliation</NavLink></li>
           </>
         )}

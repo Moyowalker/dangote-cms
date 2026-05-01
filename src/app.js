@@ -8,6 +8,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 const { initializeDatabase, Employee, MealRecord, MealPlan, AuditLog } = require('./database');
+const { buildRequestAuditEntry, safeWriteAuditLog, shouldCaptureRequestAudit } = require('./services/auditService');
 const { beginTrackedRequest, finishTrackedRequest, getRequestMetricsSnapshot } = require('./services/requestMetricsService');
 
 const isTest = process.env.NODE_ENV === 'test';
@@ -192,6 +193,32 @@ app.use(session({
     sameSite: sessionCookieSameSite
   }
 }));
+
+app.use((req, res, next) => {
+  if (!shouldCaptureRequestAudit(req)) {
+    return next();
+  }
+
+  const actorSnapshot = req.session?.user ? { ...req.session.user } : null;
+  let responseBody;
+  const originalJson = res.json.bind(res);
+
+  res.json = (payload) => {
+    responseBody = payload;
+    return originalJson(payload);
+  };
+
+  res.on('finish', () => {
+    const entry = buildRequestAuditEntry(req, res, responseBody, actorSnapshot);
+    if (!entry) {
+      return;
+    }
+
+    safeWriteAuditLog(entry);
+  });
+
+  next();
+});
 
 const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
   getSecret: () => sessionSecret,

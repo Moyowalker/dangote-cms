@@ -10,6 +10,7 @@ import Tickets from './pages/Tickets';
 import VendorInterface from './pages/VendorInterface';
 import HelpDeskIssue from './pages/HelpDeskIssue';
 import OfflineActivity from './pages/OfflineActivity';
+import AuditTrail from './pages/AuditTrail';
 import Reports from './pages/Reports';
 import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
@@ -77,6 +78,11 @@ export default function App() {
             <Route path="/reports" element={
               <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
                 <Reports />
+              </ProtectedRoute>
+            } />
+            <Route path="/audit" element={
+              <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
+                <AuditTrail />
               </ProtectedRoute>
             } />
             <Route path="/reconciliation" element={

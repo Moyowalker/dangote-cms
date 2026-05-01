@@ -4,7 +4,7 @@ jest.mock('../src/database');
 
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, WorkerCategory, MealRecord } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, WorkerCategory, MealRecord, AuditLog } = require('../src/database');
 
 let agent;
 
@@ -15,6 +15,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
+  await AuditLog.deleteMany({});
   await Employee.deleteMany({});
 });
 
@@ -163,5 +164,71 @@ describe('Reports Routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(1);
     expect(res.body.details[0].employee_id).toBe(String(employeeA._id));
+  });
+
+  test('GET /api/reports/audit returns filtered immutable audit entries with summary counts', async () => {
+    await AuditLog.create({
+      actor_user_id: '000000000000000000000001',
+      actor_role: 'admin',
+      action: 'employee.create',
+      entity_type: 'employee',
+      entity_id: 'employee-1',
+      outcome: 'success',
+      reason: null,
+      metadata: { request_id: 'req-audit-1' },
+      prev_hash: null,
+      hash: 'hash-audit-1'
+    });
+
+    await AuditLog.create({
+      actor_user_id: null,
+      actor_role: null,
+      action: 'auth.login',
+      entity_type: 'session',
+      entity_id: null,
+      outcome: 'failure',
+      reason: 'Invalid credentials',
+      metadata: { request_id: 'req-audit-2' },
+      prev_hash: 'hash-audit-1',
+      hash: 'hash-audit-2'
+    });
+
+    const res = await agent.get('/api/reports/audit?action=employee.create&outcome=success');
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.summary).toEqual({ total: 1, successes: 1, failures: 0 });
+    expect(res.body.entries).toHaveLength(1);
+    expect(res.body.entries[0].action).toBe('employee.create');
+    expect(res.body.entries[0].metadata.request_id).toBe('req-audit-1');
+  });
+
+  test('GET /api/reports/audit/:id returns the selected audit entry detail', async () => {
+    const created = await AuditLog.create({
+      actor_user_id: '000000000000000000000001',
+      actor_role: 'admin',
+      action: 'employee.create',
+      entity_type: 'employee',
+      entity_id: 'employee-22',
+      outcome: 'success',
+      reason: null,
+      metadata: {
+        request_id: 'req-audit-detail-1',
+        request_body: {
+          employee_number: 'EMP022',
+          badge_number: 'BADGE022'
+        }
+      },
+      prev_hash: null,
+      hash: 'hash-audit-detail-1'
+    });
+
+    const res = await agent.get(`/api/reports/audit/${created.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(created.id);
+    expect(res.body.action).toBe('employee.create');
+    expect(res.body.metadata.request_id).toBe('req-audit-detail-1');
+    expect(res.body.metadata.request_body.employee_number).toBe('EMP022');
   });
 });

@@ -34,6 +34,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Workers' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Menu Items' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reports' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Audit Trail' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reconciliation' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Scan QR' })).not.toBeInTheDocument();
@@ -55,6 +56,7 @@ describe('Navbar', () => {
     );
 
     expect(screen.getByRole('link', { name: 'Menu Items' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Audit Trail' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tickets' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Scan QR' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Offline Activity' })).toBeInTheDocument();
@@ -74,6 +76,7 @@ describe('Navbar', () => {
     );
 
     expect(screen.getByRole('link', { name: 'Offline Activity' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Audit Trail' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Scan QR' })).not.toBeInTheDocument();
   });

@@ -2052,6 +2052,17 @@ tbody tr:hover {
   transform: scale(1.03);
 }
 
+.audit-trail-json-block {
+  margin: 0;
+  padding: 16px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 /* ── Vendor Enhancements ── */
 .pg-body .vendor-redeem-box {
   padding: 36px 24px;
