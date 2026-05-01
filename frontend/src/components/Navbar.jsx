@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { EMPLOYEE_ROLE, canAccessHelpDesk, canViewWorkforce, isReportViewerRole, isVendorRole } from '../auth/roles';
+import { EMPLOYEE_ROLE, canAccessHelpDesk, canAccessOfflineActivity, canViewWorkforce, isReportViewerRole, isVendorRole } from '../auth/roles';
 import BrandLogo from './BrandLogo';
 
 export default function Navbar() {
@@ -38,7 +38,7 @@ export default function Navbar() {
         {isVendorRole(user.role) && (
           <li><NavLink to="/scan">Scan QR</NavLink></li>
         )}
-        {isVendorRole(user.role) && (
+        {canAccessOfflineActivity(user.role) && (
           <li><NavLink to="/offline-activity">Offline Activity</NavLink></li>
         )}
         {canAccessHelpDesk(user.role) && (

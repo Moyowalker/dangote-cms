@@ -1101,6 +1101,22 @@ tbody tr:hover {
   flex-direction: column;
   gap: 12px;
 }
+
+.offline-activity-stats-grid {
+  margin-top: 16px;
+}
+
+.offline-activity-review-form {
+  margin-top: 18px;
+}
+
+.offline-activity-review-grid {
+  align-items: start;
+}
+
+.offline-activity-review-notes {
+  grid-column: 1 / -1;
+}
 .sr-only {
   position: absolute;
   width: 1px;

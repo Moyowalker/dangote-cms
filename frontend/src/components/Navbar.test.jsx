@@ -37,7 +37,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Reconciliation' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Scan QR' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Offline Activity' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Offline Activity' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Help Desk' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'My Portal' })).not.toBeInTheDocument();
   });
@@ -59,6 +59,23 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Scan QR' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Offline Activity' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Help Desk' })).toBeInTheDocument();
+  });
+
+  it('shows offline activity for report viewers without vendor actions', () => {
+    useAuth.mockReturnValue({
+      user: { username: 'viewer.demo', role: 'viewer' },
+      logout: vi.fn()
+    });
+
+    render(
+      <MemoryRouter>
+        <Navbar />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('link', { name: 'Offline Activity' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Scan QR' })).not.toBeInTheDocument();
   });
 
   it('shows only self-service navigation for employee users', () => {

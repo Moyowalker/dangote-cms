@@ -8,6 +8,7 @@ export const VENDOR_ROLES = [ADMIN_ROLE, VENDOR_ROLE];
 export const REPORT_VIEWER_ROLES = [ADMIN_ROLE, VIEWER_ROLE, HR_ROLE];
 export const WORKFORCE_VIEW_ROLES = [ADMIN_ROLE, HR_ROLE];
 export const HELP_DESK_ROLES = [ADMIN_ROLE, VENDOR_ROLE];
+export const OFFLINE_ACTIVITY_ROLES = [ADMIN_ROLE, VENDOR_ROLE, VIEWER_ROLE, HR_ROLE];
 
 export function isVendorRole(role) {
   return VENDOR_ROLES.includes(role);
@@ -23,4 +24,8 @@ export function canViewWorkforce(role) {
 
 export function canAccessHelpDesk(role) {
   return HELP_DESK_ROLES.includes(role);
+}
+
+export function canAccessOfflineActivity(role) {
+  return OFFLINE_ACTIVITY_ROLES.includes(role);
 }

@@ -15,7 +15,7 @@ import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
 import MenuManagement from './pages/MenuManagement';
 import PwaInstallBanner from './components/PwaInstallBanner';
-import { HELP_DESK_ROLES, REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
+import { HELP_DESK_ROLES, OFFLINE_ACTIVITY_ROLES, REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
 
 export default function App() {
   const location = useLocation();
@@ -59,7 +59,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/offline-activity" element={
-              <ProtectedRoute roles={VENDOR_ROLES}>
+              <ProtectedRoute roles={OFFLINE_ACTIVITY_ROLES}>
                 <OfflineActivity />
               </ProtectedRoute>
             } />
