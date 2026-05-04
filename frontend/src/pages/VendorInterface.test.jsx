@@ -193,6 +193,84 @@ describe('VendorInterface', () => {
     expect(client.post).toHaveBeenCalledTimes(1);
   });
 
+  it('requires approved collector badge for delegated QR redemption', async () => {
+    const user = userEvent.setup();
+
+    client.post
+      .mockResolvedValueOnce({
+        data: {
+          employee: {
+            name: 'Ada Worker',
+            employee_number: 'EMP-001',
+            badge_number: 'BG-1001',
+            photo_data_url: 'data:image/png;base64,ZmFrZQ=='
+          },
+          can_consume: true,
+          meal_type: 'lunch',
+          remaining: 1,
+          delegation: {
+            collector: {
+              name: 'Bola Proxy',
+              badge_number: 'BG-222'
+            },
+            reason: 'Worker is attending a site meeting'
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          employee: {
+            name: 'Ada Worker',
+            employee_number: 'EMP-001',
+            department: 'Operations'
+          },
+          record: {
+            id: 'txn-delegated-001',
+            meal_type: 'lunch',
+            collector_employee_id: 'collector-1'
+          },
+          transaction: {
+            transaction_reference: 'txn-delegated-001'
+          },
+          remaining: 1,
+          delegation: {
+            collector: {
+              name: 'Bola Proxy',
+              badge_number: 'BG-222'
+            }
+          }
+        }
+      });
+
+    render(<VendorInterface />);
+
+    await user.click(screen.getByRole('button', { name: /qr token/i }));
+    await user.type(screen.getByRole('textbox', { name: /qr token/i }), 'signed-delegated-token');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(await screen.findByText(/approved for collection by/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Redeem' })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/approved collector badge/i), 'BG-222');
+    await user.click(screen.getByLabelText(/visually confirmed/i));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Redeem' })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Redeem' }));
+
+    await screen.findByText(/meal recorded successfully/i);
+    expect(client.post).toHaveBeenNthCalledWith(2, '/tickets/consume', {
+      badge_number: 'BG-1001',
+      token: 'signed-delegated-token',
+      meal_type: 'lunch',
+      canteen_location: 'Main Canteen',
+      collector_badge_number: 'BG-222'
+    }, {
+      timeout: 8000
+    });
+  });
+
   it('can validate from the camera scanner without manual token paste', async () => {
     const user = userEvent.setup();
 

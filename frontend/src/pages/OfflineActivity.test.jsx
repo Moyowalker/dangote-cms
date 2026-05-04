@@ -100,7 +100,22 @@ describe('OfflineActivity', () => {
             badge_number: 'BG-001',
             meal_type: 'lunch',
             status: 'unresolved',
-            resolution_reason: 'Temporary backend failure'
+            resolution_reason: 'Temporary backend failure',
+            delegation: {
+              approval_id: 'approval-1',
+              status: 'consumed',
+              reason: 'Worker is on a production line',
+              collector: {
+                id: 'collector-1',
+                name: 'Bola Proxy',
+                badge_number: 'BG-222'
+              },
+              absent_employee: {
+                id: 'worker-1',
+                name: 'Ada Worker',
+                badge_number: 'BG-001'
+              }
+            }
           }
         ]
       }
@@ -158,8 +173,10 @@ describe('OfflineActivity', () => {
     expect(await screen.findByText(/local sync batches/i)).toBeInTheDocument();
     expect(screen.getByText(/server batches/i)).toBeInTheDocument();
     expect(screen.getByText(/upload failed during reconnect/i)).toBeInTheDocument();
-    expect(screen.getByText(/ada worker/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/ada worker/i).length).toBeGreaterThan(0);
     expect(await screen.findByDisplayValue(/needs finance check/i)).toBeInTheDocument();
+    expect(screen.getByText(/delegated entries/i)).toBeInTheDocument();
+    expect(screen.getByText(/BG-001 -> BG-222 \(Worker is on a production line\)/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /save review/i })).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText(/review status/i), 'reconciled');

@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { requireAuth, requireReportViewer, requireVendorAccess } = require('../middleware/auth');
-const { Employee, MealRecord, OfflineReconciliationBatch, Transaction } = require('../database');
+const { Employee, MealRecord, OfflineReconciliationBatch, Transaction, DelegatedMealApproval } = require('../database');
 const { safeWriteAuditLog } = require('../services/auditService');
 const { sendError } = require('../utils/apiResponse');
 const { getPagination, paginateArray } = require('../utils/pagination');
@@ -34,6 +34,79 @@ function canViewOfflineBatch(actor, batch) {
   return (role === ROLE.VENDOR || role === ROLE.ADMIN)
     && batch.submitted_by_user_id
     && String(batch.submitted_by_user_id) === String(actor.id);
+}
+
+async function hydrateOfflineBatchEntries(entries) {
+  const normalizedEntries = Array.isArray(entries) ? entries.map((entry) => ({ ...entry })) : [];
+  const mealRecordIds = [...new Set(
+    normalizedEntries
+      .map((entry) => entry.matched_meal_record_id)
+      .filter((value) => value && mongoose.Types.ObjectId.isValid(String(value)))
+      .map((value) => String(value))
+  )];
+
+  if (mealRecordIds.length === 0) {
+    return normalizedEntries;
+  }
+
+  const mealRecords = await MealRecord.find({ _id: { $in: mealRecordIds } });
+  const mealRecordById = new Map(mealRecords.map((record) => [String(record._id || record.id), record]));
+  const approvalIds = [...new Set(
+    mealRecords
+      .map((record) => record.delegation_approval_id)
+      .filter(Boolean)
+      .map((value) => String(value))
+  )];
+  const approvals = approvalIds.length > 0
+    ? await DelegatedMealApproval.find({ _id: { $in: approvalIds } })
+    : [];
+  const approvalById = new Map(approvals.map((approval) => [String(approval._id || approval.id), approval]));
+  const employeeIds = [...new Set([
+    ...mealRecords.map((record) => record.collector_employee_id).filter(Boolean).map((value) => String(value)),
+    ...approvals.map((approval) => approval.absent_employee_id).filter(Boolean).map((value) => String(value)),
+    ...approvals.map((approval) => approval.collector_employee_id).filter(Boolean).map((value) => String(value))
+  ])];
+  const employees = employeeIds.length > 0
+    ? await Employee.find({ _id: { $in: employeeIds } })
+    : [];
+  const employeeById = new Map(employees.map((employee) => [String(employee._id || employee.id), employee]));
+
+  return normalizedEntries.map((entry) => {
+    const mealRecord = mealRecordById.get(String(entry.matched_meal_record_id || ''));
+    if (!mealRecord?.delegation_approval_id && !mealRecord?.collector_employee_id) {
+      return entry;
+    }
+
+    const approval = mealRecord.delegation_approval_id
+      ? approvalById.get(String(mealRecord.delegation_approval_id))
+      : null;
+    const collector = employeeById.get(String(approval?.collector_employee_id || mealRecord?.collector_employee_id || ''));
+    const absentEmployee = employeeById.get(String(approval?.absent_employee_id || mealRecord?.employee_id || ''));
+
+    return {
+      ...entry,
+      delegation: {
+        approval_id: approval?.id || String(mealRecord.delegation_approval_id || ''),
+        status: approval?.status || 'consumed',
+        reason: approval?.reason || null,
+        valid_until: approval?.valid_until || null,
+        collector: collector ? {
+          id: collector.id,
+          name: collector.name,
+          employee_number: collector.employee_number,
+          badge_number: collector.badge_number,
+          department: collector.department
+        } : null,
+        absent_employee: absentEmployee ? {
+          id: absentEmployee.id,
+          name: absentEmployee.name,
+          employee_number: absentEmployee.employee_number,
+          badge_number: absentEmployee.badge_number,
+          department: absentEmployee.department
+        } : null
+      }
+    };
+  });
 }
 
 async function reconcileOfflineBatchEntries(redemptions, { batchDate, canteenLocation }) {
@@ -284,7 +357,9 @@ router.get('/offline-batches/:id', requireAuth, async (req, res) => {
       return sendError(res, 403, 'You do not have access to this offline reconciliation batch', 'FORBIDDEN');
     }
 
-    return res.json(batch.toJSON());
+    const payload = batch.toJSON();
+    payload.entries = await hydrateOfflineBatchEntries(payload.entries || []);
+    return res.json(payload);
   } catch (err) {
     console.error('Reconciliation offline-batch detail error:', err);
     return sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');

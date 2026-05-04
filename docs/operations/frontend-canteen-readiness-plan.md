@@ -10,6 +10,7 @@ Companion document:
 
 - `docs/operations/founder-frontend-go-live-testing-plan.md` for a founder-led test process, pass or fail decisions, and pre-go-live signoff questions.
 - `docs/operations/founder-frontend-uat-checklist.md` for a shorter founder session checklist and scoring sheet.
+- `docs/operations/offline-resilience-hardening-plan.md` for the operating model required before claiming true no-network canteen resilience at scale.
 
 ## Delivery Principle
 
@@ -147,6 +148,29 @@ Acceptance criteria:
 
 - Operations staff can identify whether an issue is isolated, vendor-specific, or system-wide.
 - Admin users can investigate suspicious or repeated failures from the UI.
+
+## P1. True No-Network Operational Hardening
+
+Why this now matters:
+
+- The product can already continue through weak or absent connectivity in a limited way.
+- Scaling that behavior across many sites now depends more on trust policy and reviewer workflow than on raw offline storage.
+- Without device enrollment, conflict classes, and queue ownership, offline scale will create exception debt faster than it creates resilience.
+
+Frontend and operational tasks:
+
+- Add an admin-facing trusted-device registry for offline vendor devices.
+- Show device trust state, station assignment, last sync age, and version drift.
+- Expand Offline Activity from history review into a triage queue with reviewer ownership and decision notes.
+- Expose explicit offline conflict classes instead of generic unresolved states.
+- Define service-hour review SLAs and escalation rules for suspicious devices and repeated sync conflicts.
+
+Acceptance criteria:
+
+- Unknown or suspended devices cannot silently rejoin trusted offline operation.
+- Offline conflicts are classified into explicit buckets that ops teams can act on consistently.
+- Reviewer actions and overrides are visible, attributable, and auditable.
+- Supervisors can identify which unresolved items need immediate action during or after an outage.
 
 ## P2. Missing Scope Screens
 

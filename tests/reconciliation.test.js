@@ -4,7 +4,7 @@ jest.mock('../src/database');
 
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, MealRecord, AuditLog, WorkerCategory, Transaction, OfflineReconciliationBatch } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord, AuditLog, WorkerCategory, Transaction, OfflineReconciliationBatch, DelegatedMealApproval } = require('../src/database');
 
 let agent;
 
@@ -19,6 +19,7 @@ beforeEach(async () => {
   await MealRecord.deleteMany({});
   await Transaction.deleteMany({});
   await OfflineReconciliationBatch.deleteMany({});
+  await DelegatedMealApproval.deleteMany({});
   await Employee.deleteMany({});
   await WorkerCategory.deleteMany({});
 });
@@ -340,6 +341,43 @@ describe('Reconciliation and Reporting Aggregation', () => {
   });
 
   test('GET /api/reconciliation/offline-batches and /:id expose offline batch history for review', async () => {
+    const absentEmployee = await Employee.create({
+      employee_number: 'RECABS001',
+      name: 'Absent Worker',
+      department: 'Operations',
+      badge_number: 'ABS-001'
+    });
+    const collector = await Employee.create({
+      employee_number: 'RECCOL001',
+      name: 'Approved Collector',
+      department: 'Operations',
+      badge_number: 'COL-001'
+    });
+    const approval = await DelegatedMealApproval.create({
+      absent_employee_id: absentEmployee._id,
+      collector_employee_id: collector._id,
+      approved_by_user_id: '000000000000000000000001',
+      approved_by_role: 'admin',
+      approval_date: '2026-05-01',
+      valid_until: new Date('2026-05-01T13:00:00.000Z'),
+      meal_type: null,
+      reason: 'Worker is on a production line',
+      notes: null,
+      status: 'consumed',
+      consumed_at: new Date('2026-05-01T12:05:00.000Z')
+    });
+    const mealRecord = await MealRecord.create({
+      employee_id: absentEmployee._id,
+      meal_type: 'lunch',
+      status: 'used',
+      consumption_date: '2026-05-01',
+      consumed_at: new Date('2026-05-01T12:05:00.000Z'),
+      vendor_user_id: '000000000000000000000001',
+      collector_employee_id: collector._id,
+      delegation_approval_id: approval._id,
+      canteen_location: 'Annex'
+    });
+
     const created = await OfflineReconciliationBatch.create({
       device_id: 'vendor-device-2',
       device_label: 'Annex tablet',
@@ -359,11 +397,12 @@ describe('Reconciliation and Reporting Aggregation', () => {
       entries: [
         {
           local_reference: 'queue-2',
-          badge_number: 'UNKNOWN',
+          badge_number: 'ABS-001',
           meal_type: 'lunch',
           client_outcome: 'synced',
-          status: 'unresolved',
-          resolution_reason: 'Employee not found for badge number'
+          matched_meal_record_id: mealRecord._id,
+          status: 'matched',
+          resolution_reason: 'Matched to a confirmed transaction'
         }
       ]
     });
@@ -377,7 +416,10 @@ describe('Reconciliation and Reporting Aggregation', () => {
     expect(detailRes.status).toBe(200);
     expect(detailRes.body.id).toBe(created.id);
     expect(detailRes.body.entries).toHaveLength(1);
-    expect(detailRes.body.entries[0].resolution_reason).toMatch(/employee not found/i);
+    expect(detailRes.body.entries[0].resolution_reason).toMatch(/matched to a confirmed transaction/i);
+    expect(detailRes.body.entries[0].delegation.collector.badge_number).toBe('COL-001');
+    expect(detailRes.body.entries[0].delegation.absent_employee.badge_number).toBe('ABS-001');
+    expect(detailRes.body.entries[0].delegation.reason).toMatch(/production line/i);
   });
 
   test('PATCH /api/reconciliation/offline-batches/:id/review updates review status and notes', async () => {

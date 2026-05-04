@@ -41,7 +41,7 @@ function decodePayload(payloadBase64) {
   }
 }
 
-async function issueSignedQrToken(employeeId, ttlSeconds = DEFAULT_TTL_SECONDS) {
+async function issueSignedQrToken(employeeId, ttlSeconds = DEFAULT_TTL_SECONDS, options = {}) {
   const issuedAtUnix = Math.floor(Date.now() / 1000);
   const expUnix = issuedAtUnix + Number(ttlSeconds || DEFAULT_TTL_SECONDS);
   const tokenJti = crypto.randomUUID();
@@ -59,6 +59,12 @@ async function issueSignedQrToken(employeeId, ttlSeconds = DEFAULT_TTL_SECONDS) 
   await QRTokenMetadata.create({
     token_jti: tokenJti,
     employee_id: employeeId,
+    delegation_approval_id: options.delegationApprovalId || null,
+    collector_employee_id: options.collectorEmployeeId || null,
+    issued_by_user_id: options.issuedByUserId || null,
+    issued_by_role: options.issuedByRole || null,
+    issuance_channel: options.issuanceChannel || 'standard',
+    delegation_reason: options.delegationReason || null,
     issued_at: new Date(issuedAtUnix * 1000),
     expires_at: new Date(expUnix * 1000),
     consumed_at: null,
@@ -67,6 +73,7 @@ async function issueSignedQrToken(employeeId, ttlSeconds = DEFAULT_TTL_SECONDS) 
 
   return {
     token: `${payloadBase64}.${signature}`,
+    token_jti: tokenJti,
     expires_at: new Date(expUnix * 1000).toISOString(),
     ttl_seconds: Number(ttlSeconds || DEFAULT_TTL_SECONDS)
   };
@@ -119,7 +126,13 @@ async function verifySignedQrToken(token) {
 
   return {
     employee_id: String(payload.employee_id),
-    jti: String(payload.jti)
+    jti: String(payload.jti),
+    delegation_approval_id: metadata.delegation_approval_id ? String(metadata.delegation_approval_id) : null,
+    collector_employee_id: metadata.collector_employee_id ? String(metadata.collector_employee_id) : null,
+    issued_by_user_id: metadata.issued_by_user_id ? String(metadata.issued_by_user_id) : null,
+    issued_by_role: metadata.issued_by_role || null,
+    issuance_channel: metadata.issuance_channel || 'standard',
+    delegation_reason: metadata.delegation_reason || null
   };
 }
 

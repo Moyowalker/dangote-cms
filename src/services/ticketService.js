@@ -22,7 +22,7 @@ function normalizeMealType(mealType) {
 }
 
 function normalizeConsumePayload(payload) {
-  const { badge_number, token, meal_type, canteen_location, notes } = payload;
+  const { badge_number, token, meal_type, canteen_location, notes, collector_badge_number } = payload;
   const prohibitedClientFields = ['allowed', 'consumed', 'remaining', 'can_consume', 'entitlement', 'transaction_reference'];
 
   const suppliedProhibitedField = prohibitedClientFields.find((field) => Object.prototype.hasOwnProperty.call(payload, field));
@@ -51,12 +51,17 @@ function normalizeConsumePayload(payload) {
     throw makeError('notes must be a string', 400, 'VALIDATION_ERROR');
   }
 
+  if (collector_badge_number !== undefined && (typeof collector_badge_number !== 'string' || !collector_badge_number.trim())) {
+    throw makeError('collector_badge_number must be a non-empty string', 400, 'VALIDATION_ERROR');
+  }
+
   return {
     badgeNumber: normalizedBadgeNumber,
     token: normalizedToken || null,
     mealType: normalizedMealType,
     canteenLocation: canteen_location ? canteen_location.trim() : 'Main Canteen',
-    notes: notes || null
+    notes: notes || null,
+    collectorBadgeNumber: collector_badge_number ? collector_badge_number.trim() : null
   };
 }
 

@@ -142,6 +142,63 @@ Expected result:
 - The table refreshes correctly after each mutation.
 - Error handling is specific enough for an admin to recover or escalate.
 
+## 7. Unregistered Device Upload Rejection
+
+Purpose:
+
+- Verify that an offline batch from an unknown or suspended device is quarantined instead of being silently accepted.
+
+Steps:
+
+1. Prepare a vendor device profile that is not enrolled or has been suspended.
+2. Perform offline activity and queue a local batch.
+3. Restore connectivity and trigger sync.
+4. Open the admin offline review surface.
+
+Expected result:
+
+- The server classifies the upload as `device-untrusted` or equivalent.
+- The batch does not auto-close as accepted.
+- Reviewers can see device identity, status, and required next action.
+
+## 8. Duplicate-Mismatch Conflict Review
+
+Purpose:
+
+- Verify that reconnect does not flatten conflicting evidence into a generic failure.
+
+Steps:
+
+1. Produce an offline redemption on one device.
+2. Record a conflicting server-side transaction for the same worker or meal window before sync.
+3. Restore connectivity and sync the offline batch.
+4. Open the conflict in the admin review queue.
+
+Expected result:
+
+- The item is classified as `duplicate-mismatch` or equivalent review state.
+- The reviewer can see both the offline evidence and the server-side matching transaction.
+- The item requires an explicit reviewer decision rather than silent auto-acceptance.
+
+## 9. Reviewer Queue SLA Triage
+
+Purpose:
+
+- Verify that unresolved offline conflicts surface with enough urgency and ownership for service-hour operations.
+
+Steps:
+
+1. Generate several unresolved offline conflicts from the same device or location.
+2. Open the admin review queue.
+3. Filter by device, location, and unresolved status.
+4. Assign one item, add a note, and resolve or reject it.
+
+Expected result:
+
+- Reviewers can identify urgent unresolved items quickly.
+- Assignment and notes are visible on the item.
+- Repeated issues from the same device are obvious enough to trigger suspension review if needed.
+
 ## Suggested First Test Batch
 
 If testing starts today, run these first:

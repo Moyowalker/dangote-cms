@@ -193,10 +193,38 @@ offlineReconciliationBatchSchema.index({ batch_date: 1, created_at: -1 });
 offlineReconciliationBatchSchema.index({ device_id: 1, batch_date: 1, created_at: -1 });
 offlineReconciliationBatchSchema.index({ submitted_by_user_id: 1, created_at: -1 });
 
+const delegatedMealApprovalSchema = new mongoose.Schema(
+  {
+    absent_employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    collector_employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    approved_by_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    approved_by_role: { type: String, default: null },
+    approval_date: { type: String, required: true },
+    valid_until: { type: Date, required: true },
+    meal_type: { type: String, enum: ['breakfast', 'lunch', 'dinner'], default: null },
+    reason: { type: String, required: true },
+    notes: { type: String, default: null },
+    issued_token_jti: { type: String, default: null },
+    status: { type: String, enum: ['active', 'consumed', 'expired', 'revoked'], default: 'active' },
+    consumed_at: { type: Date, default: null }
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }
+);
+
+delegatedMealApprovalSchema.index({ absent_employee_id: 1, approval_date: -1, created_at: -1 });
+delegatedMealApprovalSchema.index({ collector_employee_id: 1, approval_date: -1, created_at: -1 });
+delegatedMealApprovalSchema.index({ status: 1, valid_until: 1, created_at: -1 });
+
 const qrTokenMetadataSchema = new mongoose.Schema(
   {
     token_jti: { type: String, required: true, unique: true },
     employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    delegation_approval_id: { type: mongoose.Schema.Types.ObjectId, ref: 'DelegatedMealApproval', default: null },
+    collector_employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+    issued_by_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    issued_by_role: { type: String, default: null },
+    issuance_channel: { type: String, enum: ['standard', 'delegated_helpdesk'], default: 'standard' },
+    delegation_reason: { type: String, default: null },
     expires_at: { type: Date, required: true },
     issued_at: { type: Date, default: Date.now },
     last_used_at: { type: Date, default: null },
@@ -209,6 +237,7 @@ const qrTokenMetadataSchema = new mongoose.Schema(
 qrTokenMetadataSchema.index({ employee_id: 1, expires_at: -1 });
 qrTokenMetadataSchema.index({ expires_at: 1 });
 qrTokenMetadataSchema.index({ consumed_at: 1 });
+qrTokenMetadataSchema.index({ delegation_approval_id: 1, issued_at: -1 });
 
 const entitlementPolicySchema = new mongoose.Schema(
   {
@@ -257,6 +286,8 @@ const mealRecordSchema = new mongoose.Schema(
     consumption_date: { type: String, required: true },
     consumed_at: { type: Date, default: Date.now },
     vendor_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    collector_employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+    delegation_approval_id: { type: mongoose.Schema.Types.ObjectId, ref: 'DelegatedMealApproval', default: null },
     // Legacy persisted field retained during the vendor_user_id migration.
     staff_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     canteen_location: { type: String, default: 'Main Canteen' },
@@ -331,6 +362,7 @@ const MealRecord = mongoose.model('MealRecord', mealRecordSchema);
 const Transaction = mongoose.model('Transaction', transactionSchema);
 const ReconciliationRecord = mongoose.model('ReconciliationRecord', reconciliationRecordSchema);
 const OfflineReconciliationBatch = mongoose.model('OfflineReconciliationBatch', offlineReconciliationBatchSchema);
+const DelegatedMealApproval = mongoose.model('DelegatedMealApproval', delegatedMealApprovalSchema);
 const QRTokenMetadata = mongoose.model('QRTokenMetadata', qrTokenMetadataSchema);
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 
@@ -462,6 +494,7 @@ module.exports = {
   Transaction,
   ReconciliationRecord,
   OfflineReconciliationBatch,
+  DelegatedMealApproval,
   QRTokenMetadata,
   AuditLog
 };

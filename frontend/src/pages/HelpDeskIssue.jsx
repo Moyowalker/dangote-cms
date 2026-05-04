@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import client from '../api/client';
 import WorkerQrCard from '../components/WorkerQrCard';
 
@@ -55,8 +55,65 @@ function renderWorkerIdentity(employee) {
 export default function HelpDeskIssue() {
   const [badgeNumber, setBadgeNumber] = useState('');
   const [lookupState, setLookupState] = useState(buildInitialLookupState);
+  const [issueMode, setIssueMode] = useState('standard');
+  const [collectorBadgeNumber, setCollectorBadgeNumber] = useState('');
+  const [delegationReason, setDelegationReason] = useState('');
+  const [delegationState, setDelegationState] = useState({
+    status: 'idle',
+    entries: [],
+    hidden: false,
+    error: '',
+    actionId: ''
+  });
 
   const isLookingUp = lookupState.status === 'processing';
+
+  async function fetchDelegations() {
+    setDelegationState((current) => ({ ...current, status: 'loading', error: '' }));
+
+    try {
+      const response = await client.get('/tickets/delegations');
+      setDelegationState({
+        status: 'succeeded',
+        entries: Array.isArray(response.data?.entries) ? response.data.entries : [],
+        hidden: false,
+        error: '',
+        actionId: ''
+      });
+    } catch (err) {
+      if (err.response?.status === 403) {
+        setDelegationState({ status: 'hidden', entries: [], hidden: true, error: '', actionId: '' });
+        return;
+      }
+
+      setDelegationState({
+        status: 'failed',
+        entries: [],
+        hidden: false,
+        error: err.response?.data?.error || 'Failed to load delegated collection approvals.',
+        actionId: ''
+      });
+    }
+  }
+
+  useEffect(() => {
+    fetchDelegations();
+  }, []);
+
+  async function handleRevokeDelegation(approvalId) {
+    setDelegationState((current) => ({ ...current, actionId: approvalId, error: '' }));
+
+    try {
+      await client.patch(`/tickets/delegations/${approvalId}/revoke`, {});
+      await fetchDelegations();
+    } catch (err) {
+      setDelegationState((current) => ({
+        ...current,
+        actionId: '',
+        error: err.response?.data?.error || 'Failed to revoke delegated collection approval.'
+      }));
+    }
+  }
 
   async function handleLookup(event) {
     event.preventDefault();
@@ -97,6 +154,9 @@ export default function HelpDeskIssue() {
         message: response.data?.message || '',
         error: ''
       });
+      setIssueMode('standard');
+      setCollectorBadgeNumber('');
+      setDelegationReason('');
     } catch (err) {
       setLookupState({
         status: 'failed',
@@ -160,9 +220,118 @@ export default function HelpDeskIssue() {
               <p className="text-muted" style={{ marginBottom: '12px' }}>
                 This token is short-lived and single-use after successful redemption. Print or share with the worker immediately.
               </p>
-              <WorkerQrCard worker={lookupState.employee} autoRefresh />
+              <div className="vendor-mode-row" role="group" aria-label="Issuance mode" style={{ marginBottom: '12px' }}>
+                <button
+                  type="button"
+                  className={`btn ${issueMode === 'standard' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setIssueMode('standard')}
+                >
+                  Standard Token
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${issueMode === 'delegated' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setIssueMode('delegated')}
+                >
+                  Delegated Collection
+                </button>
+              </div>
+
+              {issueMode === 'delegated' ? (
+                <div style={{ marginBottom: '16px' }}>
+                  <div className="alert alert-warning" style={{ marginBottom: '12px' }}>
+                    Delegated collection requires same-day admin approval. Enter the approved collector badge and the reason for this exception.
+                  </div>
+                  <label htmlFor="delegated-collector-badge">Approved Collector Badge</label>
+                  <input
+                    id="delegated-collector-badge"
+                    className="form-control"
+                    value={collectorBadgeNumber}
+                    onChange={(event) => setCollectorBadgeNumber(event.target.value)}
+                    placeholder="Enter approved collector badge number..."
+                    style={{ maxWidth: '500px', width: '100%', marginBottom: '12px' }}
+                  />
+                  <label htmlFor="delegation-reason">Delegation Reason</label>
+                  <textarea
+                    id="delegation-reason"
+                    className="form-control"
+                    value={delegationReason}
+                    onChange={(event) => setDelegationReason(event.target.value)}
+                    placeholder="Why is this worker not able to collect personally today?"
+                    rows={3}
+                    style={{ maxWidth: '500px', width: '100%' }}
+                  />
+                </div>
+              ) : null}
+              <WorkerQrCard
+                worker={lookupState.employee}
+                autoRefresh
+                issueRequest={issueMode === 'delegated' && collectorBadgeNumber.trim() && delegationReason.trim()
+                  ? {
+                    delegated_to_badge_number: collectorBadgeNumber.trim(),
+                    delegation_reason: delegationReason.trim()
+                  }
+                  : null}
+              />
             </div>
           </>
+        ) : null}
+
+        {!delegationState.hidden ? (
+          <div className="card">
+            <div className="card-title">Delegated Collection Approvals</div>
+            {delegationState.status === 'loading' ? (
+              <div className="loading">Loading delegated approvals...</div>
+            ) : delegationState.error ? (
+              <div className="alert alert-error">{delegationState.error}</div>
+            ) : delegationState.entries.length === 0 ? (
+              <div className="text-muted">No delegated collection approvals are currently active.</div>
+            ) : (
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Absent Worker</th>
+                      <th>Approved Collector</th>
+                      <th>Reason</th>
+                      <th>Valid Until</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {delegationState.entries.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>
+                          {entry.absent_employee?.name || '-'}
+                          <div className="text-muted">{entry.absent_employee?.badge_number || '-'}</div>
+                        </td>
+                        <td>
+                          {entry.collector_employee?.name || '-'}
+                          <div className="text-muted">{entry.collector_employee?.badge_number || '-'}</div>
+                        </td>
+                        <td>{entry.reason || '-'}</td>
+                        <td>{entry.valid_until ? new Date(entry.valid_until).toLocaleString() : '-'}</td>
+                        <td><span className={`badge ${entry.status === 'active' ? 'badge-success' : 'badge-secondary'}`}>{entry.status}</span></td>
+                        <td>
+                          {entry.status === 'active' ? (
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              onClick={() => handleRevokeDelegation(entry.id)}
+                              disabled={delegationState.actionId === entry.id}
+                            >
+                              {delegationState.actionId === entry.id ? 'Revoking...' : 'Revoke'}
+                            </button>
+                          ) : 'Closed'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         ) : null}
       </div>
     </div>

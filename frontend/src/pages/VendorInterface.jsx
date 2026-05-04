@@ -190,6 +190,7 @@ export default function VendorInterface() {
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [collectorBadgeNumber, setCollectorBadgeNumber] = useState('');
   const [offlineQueue, setOfflineQueue] = useState([]);
   const [syncState, setSyncState] = useState(buildInitialSyncState);
   const previousOnlineRef = useRef(isOnline);
@@ -416,6 +417,7 @@ export default function VendorInterface() {
     setValidationState({ status: 'processing', data: null, error: null });
     setRedeemState(buildInitialRedeemState());
     setIdentityConfirmed(false);
+    setCollectorBadgeNumber('');
 
     if (!isOnline) {
       if (!isBadgeLookup) {
@@ -557,6 +559,10 @@ export default function VendorInterface() {
 
       if (lookupMode === 'qr' && qrToken.trim()) {
         requestBody.token = qrToken.trim();
+      }
+
+      if (validationState.data?.delegation) {
+        requestBody.collector_badge_number = collectorBadgeNumber.trim();
       }
 
       const res = await client.post('/tickets/consume', {
@@ -829,7 +835,7 @@ export default function VendorInterface() {
               type="button"
               className="btn btn-primary"
               onClick={handleRedeem}
-              disabled={disableActions || !activeBadgeNumber || (requiresIdentityConfirmation && !identityConfirmed) || (!isOnline && !canRedeemOffline)}
+              disabled={disableActions || !activeBadgeNumber || (requiresIdentityConfirmation && !identityConfirmed) || (validationState.data?.delegation && !collectorBadgeNumber.trim()) || (!isOnline && !canRedeemOffline)}
               style={{ padding: '10px 32px', fontSize: '1rem', marginTop: '8px', marginLeft: '10px' }}
             >
               {isRedeeming ? 'Redeeming...' : !isOnline && canRedeemOffline ? 'Queue Redeem' : 'Redeem'}
@@ -848,6 +854,13 @@ export default function VendorInterface() {
               ) : (
                 <>
                   {renderWorkerIdentity(validationState.data?.employee, lookupMode === 'qr' ? 'Signed QR token' : 'Badge lookup')}
+                  {validationState.data?.delegation ? (
+                    <div className="alert alert-warning" style={{ marginBottom: '12px' }}>
+                      <strong>Delegated collection:</strong> this meal belongs to the absent worker above, but it is approved for collection by {validationState.data.delegation.collector?.name}
+                      {validationState.data.delegation.collector?.badge_number ? ` (Badge ${validationState.data.delegation.collector.badge_number})` : ''}.
+                      {validationState.data.delegation.reason ? ` Reason: ${validationState.data.delegation.reason}.` : ''}
+                    </div>
+                  ) : null}
                   <p><strong>Meal Type:</strong> {validationState.data?.meal_type}</p>
                   <p><strong>Status:</strong> {validationState.data?.can_consume ? 'Eligible' : 'Already consumed'}</p>
                   <p><strong>Remaining balance:</strong> {validationState.data?.remaining ?? 0}</p>
@@ -862,6 +875,21 @@ export default function VendorInterface() {
             </div>
           )}
 
+          {validationState.data?.delegation ? (
+            <div className="vendor-confirmation-check" style={{ maxWidth: '500px', margin: '16px auto 0' }}>
+              <label htmlFor="collector-badge-number" style={{ display: 'block', marginBottom: '8px' }}>Approved Collector Badge</label>
+              <input
+                id="collector-badge-number"
+                className="form-control"
+                aria-label="Approved Collector Badge"
+                value={collectorBadgeNumber}
+                onChange={(event) => setCollectorBadgeNumber(event.target.value)}
+                placeholder="Enter approved collector badge before redeeming"
+                disabled={disableActions}
+              />
+            </div>
+          ) : null}
+
           {requiresIdentityConfirmation ? (
             <div className="vendor-confirmation-check">
               <label htmlFor="vendor-identity-confirmation">
@@ -872,7 +900,9 @@ export default function VendorInterface() {
                   onChange={(event) => setIdentityConfirmed(event.target.checked)}
                   disabled={disableActions}
                 />
-                <span>I have visually confirmed that the worker presenting this QR matches the validated profile.</span>
+                <span>{validationState.data?.delegation
+                  ? 'I have visually confirmed that the approved collector presenting this token matches the delegated collection approval and the worker details shown.'
+                  : 'I have visually confirmed that the worker presenting this QR matches the validated profile.'}</span>
               </label>
             </div>
           ) : null}
@@ -898,6 +928,9 @@ export default function VendorInterface() {
                     {redeemState.data?.recovered ? 'Meal Found in Recent History' : 'Meal Recorded Successfully'}
                   </h3>
                   {redeemState.data?.employee ? renderWorkerIdentity(redeemState.data.employee) : null}
+                  {redeemState.data?.delegation ? (
+                    <p><strong>Collected by:</strong> {redeemState.data.delegation.collector?.name} ({redeemState.data.delegation.collector?.badge_number})</p>
+                  ) : null}
                   <p><strong>Meal Type:</strong> {redeemState.data?.record?.meal_type}</p>
                   <p><strong>Transaction reference:</strong> #{redeemState.data?.transaction?.transaction_reference || redeemState.data?.record?.id}</p>
                   <p><strong>Remaining balance:</strong> {redeemState.data?.remaining ?? 'Unavailable from recovery lookup'}</p>

@@ -4,6 +4,7 @@ import client from '../api/client';
 function buildInitialFilters() {
   return {
     date: new Date().toISOString().split('T')[0],
+    scope: '',
     action: '',
     entityType: '',
     outcome: '',
@@ -14,6 +15,7 @@ function buildInitialFilters() {
 function buildAuditParams(filters) {
   return {
     date: filters.date,
+    ...(filters.scope === 'delegation' ? { delegation_only: 'true' } : {}),
     ...(filters.action ? { action: filters.action } : {}),
     ...(filters.entityType ? { entity_type: filters.entityType } : {}),
     ...(filters.outcome ? { outcome: filters.outcome } : {}),
@@ -31,6 +33,32 @@ function formatDateTime(value) {
 
 function badgeClassForOutcome(outcome) {
   return outcome === 'failure' ? 'badge-danger' : 'badge-success';
+}
+
+function hasDelegationContext(entry) {
+  const metadata = entry?.metadata || {};
+
+  return entry?.entity_type === 'delegated_meal_approval'
+    || String(entry?.action || '').startsWith('ticket.delegation.')
+    || metadata.issuance_channel === 'delegated_helpdesk'
+    || Boolean(metadata.delegation_approval_id)
+    || Boolean(metadata.collector_employee_id)
+    || Boolean(metadata.collector_badge_number)
+    || Boolean(metadata.absent_employee_id);
+}
+
+function buildDelegationContext(entry) {
+  const metadata = entry?.metadata || {};
+
+  return {
+    approvalId: metadata.delegation_approval_id || (entry?.entity_type === 'delegated_meal_approval' ? entry?.entity_id : null),
+    absentEmployeeId: metadata.absent_employee_id || null,
+    collectorEmployeeId: metadata.collector_employee_id || null,
+    collectorBadgeNumber: metadata.collector_badge_number || null,
+    issuanceChannel: metadata.issuance_channel || null,
+    delegationReason: metadata.delegation_reason || null,
+    revokeNote: metadata.note || null
+  };
 }
 
 function renderAuditJson(value) {
@@ -146,6 +174,13 @@ export default function AuditTrail() {
                 <input id="audit-date" name="date" type="date" className="form-control" value={filters.date} onChange={handleFilterChange} />
               </div>
               <div className="form-group">
+                <label htmlFor="audit-scope">Scope</label>
+                <select id="audit-scope" name="scope" className="form-control" value={filters.scope} onChange={handleFilterChange}>
+                  <option value="">All activity</option>
+                  <option value="delegation">Delegation activity</option>
+                </select>
+              </div>
+              <div className="form-group">
                 <label htmlFor="audit-action">Action</label>
                 <input id="audit-action" name="action" className="form-control" placeholder="employee.create" value={filters.action} onChange={handleFilterChange} />
               </div>
@@ -211,6 +246,7 @@ export default function AuditTrail() {
                     <th>Action</th>
                     <th>Entity</th>
                     <th>Outcome</th>
+                    <th>Delegation</th>
                     <th>Reason</th>
                     <th>Request ID</th>
                     <th>Detail</th>
@@ -234,6 +270,7 @@ export default function AuditTrail() {
                           {entry.outcome}
                         </span>
                       </td>
+                      <td>{hasDelegationContext(entry) ? <span className="badge badge-info">Delegation</span> : '-'}</td>
                       <td>{entry.reason || '-'}</td>
                       <td>{entry.metadata?.request_id || '-'}</td>
                       <td>
@@ -263,6 +300,44 @@ export default function AuditTrail() {
             <div className="text-muted">Audit entry detail is unavailable for the current selection.</div>
           ) : (
             <>
+              {hasDelegationContext(selectedAuditEntry) ? (
+                <div className="card" style={{ boxShadow: 'none', padding: 0, marginBottom: '16px' }}>
+                  <div className="card-title">Delegation Context</div>
+                  <div className="indicator-chip-row">
+                    {buildDelegationContext(selectedAuditEntry).approvalId ? (
+                      <div className="indicator-chip"><strong>Approval:</strong> {buildDelegationContext(selectedAuditEntry).approvalId}</div>
+                    ) : null}
+                    {buildDelegationContext(selectedAuditEntry).collectorBadgeNumber ? (
+                      <div className="indicator-chip"><strong>Collector Badge:</strong> {buildDelegationContext(selectedAuditEntry).collectorBadgeNumber}</div>
+                    ) : null}
+                    {buildDelegationContext(selectedAuditEntry).issuanceChannel ? (
+                      <div className="indicator-chip"><strong>Channel:</strong> {buildDelegationContext(selectedAuditEntry).issuanceChannel}</div>
+                    ) : null}
+                  </div>
+                  <div className="table-container" style={{ marginTop: '16px' }}>
+                    <table>
+                      <tbody>
+                        <tr>
+                          <th>Absent Worker ID</th>
+                          <td>{buildDelegationContext(selectedAuditEntry).absentEmployeeId || '-'}</td>
+                        </tr>
+                        <tr>
+                          <th>Collector Employee ID</th>
+                          <td>{buildDelegationContext(selectedAuditEntry).collectorEmployeeId || '-'}</td>
+                        </tr>
+                        <tr>
+                          <th>Delegation Reason</th>
+                          <td>{buildDelegationContext(selectedAuditEntry).delegationReason || '-'}</td>
+                        </tr>
+                        <tr>
+                          <th>Review Note</th>
+                          <td>{buildDelegationContext(selectedAuditEntry).revokeNote || '-'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
               <div className="indicator-chip-row">
                 <div className="indicator-chip"><strong>Action:</strong> {selectedAuditEntry.action}</div>
                 <div className="indicator-chip"><strong>Entity:</strong> {selectedAuditEntry.entity_type}</div>

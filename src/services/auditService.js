@@ -230,6 +230,18 @@ function parseAuditTimestamp(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function hasDelegationAuditContext(entry) {
+  const metadata = entry?.metadata || {};
+
+  return entry?.entity_type === 'delegated_meal_approval'
+    || String(entry?.action || '').startsWith('ticket.delegation.')
+    || metadata.issuance_channel === 'delegated_helpdesk'
+    || Boolean(metadata.delegation_approval_id)
+    || Boolean(metadata.collector_employee_id)
+    || Boolean(metadata.collector_badge_number)
+    || Boolean(metadata.absent_employee_id);
+}
+
 async function listAuditLogs(filters = {}) {
   const records = await AuditLog.find({});
   const allEntries = Array.isArray(records) ? records.map((record) => (record.toJSON ? record.toJSON() : { ...record })) : [];
@@ -267,6 +279,10 @@ async function listAuditLogs(filters = {}) {
     }
 
     if (filters.request_id && entry.metadata?.request_id !== filters.request_id) {
+      return false;
+    }
+
+    if (String(filters.delegation_only || '').toLowerCase() === 'true' && !hasDelegationAuditContext(entry)) {
       return false;
     }
 

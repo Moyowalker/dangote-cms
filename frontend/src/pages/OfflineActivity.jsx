@@ -48,6 +48,17 @@ function formatReviewerLabel(batch) {
   return `Reviewed ${formatDateTime(batch.reviewed_at)}`;
 }
 
+function formatDelegationSummary(entry) {
+  if (!entry?.delegation) {
+    return 'Direct redemption';
+  }
+
+  const absent = entry.delegation.absent_employee?.badge_number || entry.delegation.absent_employee?.name || 'Worker';
+  const collector = entry.delegation.collector?.badge_number || entry.delegation.collector?.name || 'Approved collector';
+  const reason = entry.delegation.reason || 'Delegated collection';
+  return `${absent} -> ${collector} (${reason})`;
+}
+
 export default function OfflineActivity() {
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -136,6 +147,10 @@ export default function OfflineActivity() {
   const localNeedsFollowUp = localBatches.filter((batch) => batch.status !== 'reconciled' || batch.upload_status !== 'uploaded').length;
   const serverNeedsReview = serverBatches.filter((batch) => batch.status !== 'reconciled').length;
   const serverSummary = useMemo(() => selectedServerBatch?.summary || null, [selectedServerBatch]);
+  const delegatedServerEntries = useMemo(
+    () => (selectedServerBatch?.entries || []).filter((entry) => entry.delegation).length,
+    [selectedServerBatch]
+  );
 
   async function handleSubmitReview(event) {
     event.preventDefault();
@@ -392,6 +407,7 @@ export default function OfflineActivity() {
                   <div className="indicator-chip"><strong>Status:</strong> {selectedServerBatch.status}</div>
                   <div className="indicator-chip"><strong>Uploaded:</strong> {formatDateTime(selectedServerBatch.created_at)}</div>
                   <div className="indicator-chip"><strong>Review:</strong> {formatReviewerLabel(selectedServerBatch)}</div>
+                  <div className="indicator-chip"><strong>Delegated Entries:</strong> {delegatedServerEntries}</div>
                 </div>
                 {selectedServerBatch.review_notes ? (
                   <div className="alert alert-info">{selectedServerBatch.review_notes}</div>
@@ -464,6 +480,7 @@ export default function OfflineActivity() {
                       <th>Worker</th>
                       <th>Badge</th>
                       <th>Meal</th>
+                      <th>Delegation</th>
                       <th>Queue Ref</th>
                       <th>Status</th>
                       <th>Resolution</th>
@@ -472,7 +489,7 @@ export default function OfflineActivity() {
                   <tbody>
                     {(selectedServerBatch.entries || []).length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center text-muted" style={{ padding: '20px' }}>
+                        <td colSpan={7} className="text-center text-muted" style={{ padding: '20px' }}>
                           No authoritative item detail is available for this server batch.
                         </td>
                       </tr>
@@ -481,6 +498,7 @@ export default function OfflineActivity() {
                         <td>{entry.employee_name || 'Unknown worker'} {entry.employee_number ? `(${entry.employee_number})` : ''}</td>
                         <td>{entry.badge_number || '-'}</td>
                         <td>{entry.meal_type || '-'}</td>
+                        <td>{formatDelegationSummary(entry)}</td>
                         <td>{entry.local_reference || '-'}</td>
                         <td>{entry.status || '-'}</td>
                         <td>{entry.resolution_reason || entry.client_error || '-'}</td>

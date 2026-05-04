@@ -17,61 +17,79 @@ describe('AuditTrail', () => {
   });
 
   it('loads and displays audit entries with summary cards', async () => {
-    client.get.mockResolvedValueOnce({
-      data: {
-        total: 2,
-        summary: {
-          total: 2,
-          successes: 1,
-          failures: 1
-        },
-        entries: [
-          {
+    client.get.mockImplementation(async (url) => {
+      if (url === '/reports/audit/audit-1') {
+        return {
+          data: {
             id: 'audit-1',
             created_at: '2099-03-23T12:15:00.000Z',
             actor_role: 'admin',
             actor_user_id: '000000000000000000000001',
-            action: 'employee.create',
+            action: 'ticket.qr.issue',
             entity_type: 'employee',
             entity_id: 'emp-1',
             outcome: 'success',
             reason: null,
-            metadata: { request_id: 'req-audit-1' }
+            prev_hash: null,
+            hash: 'hash-audit-1',
+            metadata: {
+              request_id: 'req-audit-1',
+              issuance_channel: 'delegated_helpdesk',
+              delegation_approval_id: 'approval-1',
+              collector_employee_id: 'collector-1',
+              collector_badge_number: 'BG-222',
+              delegation_reason: 'Worker is on a production line',
+              request_body: {
+                employee_number: 'EMP-001'
+              }
+            }
+          }
+        };
+      }
+
+      return {
+        data: {
+          total: 2,
+          summary: {
+            total: 2,
+            successes: 1,
+            failures: 1
           },
-          {
-            id: 'audit-2',
-            created_at: '2099-03-23T12:16:00.000Z',
-            actor_role: 'anonymous',
-            actor_user_id: null,
-            action: 'auth.login',
-            entity_type: 'session',
-            entity_id: null,
-            outcome: 'failure',
-            reason: 'Invalid credentials',
-            metadata: { request_id: 'req-audit-2' }
-          }
-        ]
-      }
-    }).mockResolvedValueOnce({
-      data: {
-        id: 'audit-1',
-        created_at: '2099-03-23T12:15:00.000Z',
-        actor_role: 'admin',
-        actor_user_id: '000000000000000000000001',
-        action: 'employee.create',
-        entity_type: 'employee',
-        entity_id: 'emp-1',
-        outcome: 'success',
-        reason: null,
-        prev_hash: null,
-        hash: 'hash-audit-1',
-        metadata: {
-          request_id: 'req-audit-1',
-          request_body: {
-            employee_number: 'EMP-001'
-          }
+          entries: [
+            {
+              id: 'audit-1',
+              created_at: '2099-03-23T12:15:00.000Z',
+              actor_role: 'admin',
+              actor_user_id: '000000000000000000000001',
+              action: 'ticket.qr.issue',
+              entity_type: 'employee',
+              entity_id: 'emp-1',
+              outcome: 'success',
+              reason: null,
+              metadata: {
+                request_id: 'req-audit-1',
+                issuance_channel: 'delegated_helpdesk',
+                delegation_approval_id: 'approval-1',
+                collector_employee_id: 'collector-1',
+                collector_badge_number: 'BG-222',
+                delegation_reason: 'Worker is on a production line'
+              }
+            },
+            {
+              id: 'audit-2',
+              created_at: '2099-03-23T12:16:00.000Z',
+              actor_role: 'anonymous',
+              actor_user_id: null,
+              action: 'auth.login',
+              entity_type: 'session',
+              entity_id: null,
+              outcome: 'failure',
+              reason: 'Invalid credentials',
+              metadata: { request_id: 'req-audit-2' }
+            }
+          ]
         }
-      }
+      };
     });
 
     render(<AuditTrail />);
@@ -80,10 +98,13 @@ describe('AuditTrail', () => {
     expect(screen.getAllByText('Audit Entries').length).toBeGreaterThan(0);
     expect(screen.getByText('Successful Actions')).toBeInTheDocument();
     expect(screen.getByText('Failed Actions')).toBeInTheDocument();
-    expect(screen.getByText('employee.create')).toBeInTheDocument();
+    expect(screen.getByText('ticket.qr.issue')).toBeInTheDocument();
     expect(screen.getByText('auth.login')).toBeInTheDocument();
     expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
     expect(await screen.findByText('Selected Audit Entry')).toBeInTheDocument();
+    expect(await screen.findByText('Delegation Context')).toBeInTheDocument();
+    expect((await screen.findAllByText(/BG-222/i)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Worker is on a production line/i)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/hash-audit-1/i)).toBeInTheDocument();
     expect(screen.getAllByText(/req-audit-1/i)).toHaveLength(2);
     expect(screen.getByText(/EMP-001/i)).toBeInTheDocument();
@@ -96,17 +117,24 @@ describe('AuditTrail', () => {
   it('applies audit filters', async () => {
     const user = userEvent.setup();
 
-    client.get.mockResolvedValue({
-      data: {
-        total: 0,
-        summary: { total: 0, successes: 0, failures: 0 },
-        entries: []
+    client.get.mockImplementation(async (url) => {
+      if (String(url).startsWith('/reports/audit/')) {
+        return { data: null };
       }
+
+      return {
+        data: {
+          total: 0,
+          summary: { total: 0, successes: 0, failures: 0 },
+          entries: []
+        }
+      };
     });
 
     render(<AuditTrail />);
     await screen.findByText(/no audit entries match these filters/i);
 
+    await user.selectOptions(screen.getByLabelText(/scope/i), 'delegation');
     await user.type(screen.getByLabelText(/action/i), 'employee.create');
     await user.selectOptions(screen.getByLabelText(/outcome/i), 'success');
     await user.click(screen.getByRole('button', { name: /apply filters/i }));
@@ -114,6 +142,7 @@ describe('AuditTrail', () => {
     expect(client.get).toHaveBeenLastCalledWith('/reports/audit', {
       params: {
         date: expect.any(String),
+        delegation_only: 'true',
         action: 'employee.create',
         outcome: 'success'
       }

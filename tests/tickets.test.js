@@ -13,6 +13,7 @@ const {
   MealRecord,
   AuditLog,
   QRTokenMetadata,
+  DelegatedMealApproval,
   EmployeeCategory,
   Vendor,
   VendorRestriction,
@@ -34,6 +35,7 @@ beforeEach(async () => {
   await MealRecord.deleteMany({});
   await AuditLog.deleteMany({});
   await QRTokenMetadata.deleteMany({});
+  await DelegatedMealApproval.deleteMany({});
   await VendorRestriction.deleteMany({});
   await Vendor.deleteMany({});
   await Transaction.deleteMany({});
@@ -384,6 +386,140 @@ describe('Tickets Routes', () => {
     expect(res.body.employee.badge_number).toBe('BADGE001');
     expect(res.body).toHaveProperty('can_consume');
     expect(res.body).toHaveProperty('remaining');
+  });
+
+  test('GET /api/tickets/delegations lists hydrated delegated approvals for admin review', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+
+    await agent.post('/api/tickets/qr-token').send({
+      employee_id: testEmployee.id,
+      delegated_to_employee_id: collector.id,
+      delegation_reason: 'Worker is on a production line',
+      ttl_seconds: 300
+    });
+
+    const res = await agent.get('/api/tickets/delegations');
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.entries[0].status).toBe('active');
+    expect(res.body.entries[0].absent_employee.badge_number).toBe('BADGE001');
+    expect(res.body.entries[0].collector_employee.badge_number).toBe('BADGE002');
+  });
+
+  test('PATCH /api/tickets/delegations/:id/revoke revokes an active delegated approval', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+
+    await agent.post('/api/tickets/qr-token').send({
+      employee_id: testEmployee.id,
+      delegated_to_employee_id: collector.id,
+      delegation_reason: 'Worker is in a meeting',
+      ttl_seconds: 300
+    });
+
+    const approval = await DelegatedMealApproval.findOne({ absent_employee_id: testEmployee._id });
+    const res = await agent.patch(`/api/tickets/delegations/${approval.id}/revoke`).send({
+      note: 'Request cancelled before service'
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('revoked');
+    expect(res.body.notes).toBe('Request cancelled before service');
+
+    const stored = await DelegatedMealApproval.findById(approval.id);
+    expect(stored.status).toBe('revoked');
+
+    const auditEntries = await AuditLog.find({ action: 'ticket.delegation.revoke' });
+    expect(auditEntries).toHaveLength(1);
+  });
+
+  test('POST /api/tickets/qr-token can issue a delegated collection token for an approved collector', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+
+    const res = await agent.post('/api/tickets/qr-token').send({
+      employee_id: testEmployee.id,
+      delegated_to_employee_id: collector.id,
+      delegation_reason: 'Worker is on a production line and cannot leave station',
+      ttl_seconds: 300
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.delegation.collector.badge_number).toBe('BADGE002');
+    expect(res.body.delegation.reason).toMatch(/production line/i);
+
+    const approval = await DelegatedMealApproval.findOne({ absent_employee_id: testEmployee._id });
+    expect(approval).toBeTruthy();
+    expect(String(approval.collector_employee_id)).toBe(String(collector._id));
+
+    const tokenMetadata = await QRTokenMetadata.findOne({ token_jti: res.body.token.split('.')[0] ? undefined : undefined });
+    expect(res.body.token).toBeTruthy();
+    expect(tokenMetadata).toBeFalsy();
+  });
+
+  test('POST /api/tickets/validate-token returns delegation context and consume enforces approved collector', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+
+    const issued = await agent.post('/api/tickets/qr-token').send({
+      employee_id: testEmployee.id,
+      delegated_to_employee_id: collector.id,
+      delegation_reason: 'Worker is attending a site meeting',
+      ttl_seconds: 300
+    });
+
+    expect(issued.status).toBe(201);
+
+    const validateRes = await agent.post('/api/tickets/validate-token').send({
+      token: issued.body.token,
+      meal_type: 'lunch'
+    });
+
+    expect(validateRes.status).toBe(200);
+    expect(validateRes.body.delegation.collector.badge_number).toBe('BADGE002');
+
+    const wrongCollector = await agent.post('/api/tickets/consume').send({
+      token: issued.body.token,
+      meal_type: 'lunch',
+      collector_badge_number: 'BADGE999',
+      canteen_location: 'Main Canteen'
+    });
+
+    expect(wrongCollector.status).toBe(403);
+    expect(wrongCollector.body.code).toBe('INVALID_DELEGATION');
+
+    const consumeRes = await agent.post('/api/tickets/consume').send({
+      token: issued.body.token,
+      meal_type: 'lunch',
+      collector_badge_number: 'BADGE002',
+      canteen_location: 'Main Canteen'
+    });
+
+    expect(consumeRes.status).toBe(201);
+    expect(consumeRes.body.employee.badge_number).toBe('BADGE001');
+    expect(consumeRes.body.delegation.collector.badge_number).toBe('BADGE002');
+    expect(consumeRes.body.record.collector_employee_id).toBe(collector.id);
+
+    const approval = await DelegatedMealApproval.findOne({ absent_employee_id: testEmployee._id });
+    expect(approval.status).toBe('consumed');
   });
 
   test('POST /api/tickets/validate-token rejects invalid signed token', async () => {

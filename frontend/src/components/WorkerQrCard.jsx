@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import client from '../api/client';
 
@@ -82,18 +82,24 @@ function printQrCard({ worker, qrCodeUrl, expiresAt }) {
 
 export default function WorkerQrCard({
   worker,
+  issueRequest = null,
   autoRefresh = false,
   showToken = true,
   allowPortableActions = true,
   allowManualRefresh = true
 }) {
   const [status, setStatus] = useState('idle');
-  const [qrState, setQrState] = useState({ token: '', qrCodeUrl: '', expiresAt: '', ttlSeconds: DEFAULT_TTL_SECONDS });
+  const [qrState, setQrState] = useState({ token: '', qrCodeUrl: '', expiresAt: '', ttlSeconds: DEFAULT_TTL_SECONDS, delegation: null });
   const [error, setError] = useState('');
   const [copyStatus, setCopyStatus] = useState('idle');
   const [actionStatus, setActionStatus] = useState('idle');
   const [now, setNow] = useState(Date.now());
   const [issueVersion, setIssueVersion] = useState(0);
+  const issueRequestRef = useRef(issueRequest);
+
+  useEffect(() => {
+    issueRequestRef.current = issueRequest;
+  }, [issueRequest]);
 
   const expiresAtMs = useMemo(() => (qrState.expiresAt ? new Date(qrState.expiresAt).getTime() : 0), [qrState.expiresAt]);
   const secondsRemaining = expiresAtMs ? Math.max(0, Math.ceil((expiresAtMs - now) / 1000)) : 0;
@@ -113,7 +119,8 @@ export default function WorkerQrCard({
     try {
       const response = await client.post('/tickets/qr-token', {
         employee_id: worker.id,
-        ttl_seconds: DEFAULT_TTL_SECONDS
+        ttl_seconds: DEFAULT_TTL_SECONDS,
+        ...(issueRequestRef.current || {})
       });
 
       const token = response.data?.token || '';
@@ -129,7 +136,7 @@ export default function WorkerQrCard({
         }
       });
 
-      setQrState({ token, qrCodeUrl, expiresAt, ttlSeconds });
+      setQrState({ token, qrCodeUrl, expiresAt, ttlSeconds, delegation: response.data?.delegation || null });
       setStatus('ready');
     } catch (err) {
       setStatus('error');
@@ -249,6 +256,12 @@ export default function WorkerQrCard({
               <p>
                 Expiry time: <strong>{new Date(qrState.expiresAt).toLocaleTimeString()}</strong>
               </p>
+              {qrState.delegation ? (
+                <p>
+                  Delegated collection approved for <strong>{qrState.delegation.collector?.name}</strong>
+                  {qrState.delegation.collector?.badge_number ? ` (Badge ${qrState.delegation.collector.badge_number})` : ''}.
+                </p>
+              ) : null}
               {autoRefresh ? (
                 <p className="worker-qr-refresh-note">Auto-refresh is enabled so the on-screen QR rotates before expiry.</p>
               ) : null}
