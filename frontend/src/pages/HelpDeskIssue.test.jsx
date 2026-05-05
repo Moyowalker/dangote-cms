@@ -26,6 +26,9 @@ vi.mock('../api/client', () => ({
 describe('HelpDeskIssue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    client.get.mockReset();
+    client.post.mockReset();
+    client.patch.mockReset();
     toDataURL.mockResolvedValue('data:image/png;base64,helpdesk');
     window.alert = vi.fn();
     window.confirm = vi.fn(() => true);
@@ -222,7 +225,7 @@ describe('HelpDeskIssue', () => {
 
     render(<HelpDeskIssue />);
 
-    expect(await screen.findByText(/delegated collection approvals/i)).toBeInTheDocument();
+    expect(await screen.findByText(/delegated meal requests & approvals/i)).toBeInTheDocument();
     expect(screen.getByText(/bola proxy/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /revoke/i }));
@@ -232,5 +235,65 @@ describe('HelpDeskIssue', () => {
     });
 
     expect(await screen.findByText(/closed/i)).toBeInTheDocument();
+  });
+
+  it('lists requested delegations and lets admin approve one from the review panel', async () => {
+    const user = userEvent.setup();
+
+    client.get
+      .mockResolvedValueOnce({
+        data: {
+          entries: [{
+            id: 'approval-2',
+            status: 'requested',
+            reason: 'I am on a production line',
+            valid_until: '2099-03-23T12:00:00.000Z',
+            absent_employee: {
+              name: 'Ada Worker',
+              badge_number: 'BG-001'
+            },
+            collector_employee: {
+              name: 'Bola Proxy',
+              badge_number: 'BG-222'
+            }
+          }]
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          entries: [{
+            id: 'approval-2',
+            status: 'active',
+            reason: 'I am on a production line',
+            valid_until: '2099-03-23T12:00:00.000Z',
+            absent_employee: {
+              name: 'Ada Worker',
+              badge_number: 'BG-001'
+            },
+            collector_employee: {
+              name: 'Bola Proxy',
+              badge_number: 'BG-222'
+            }
+          }]
+        }
+      });
+
+    client.patch.mockResolvedValueOnce({
+      data: {
+        id: 'approval-2',
+        status: 'active'
+      }
+    });
+
+    render(<HelpDeskIssue />);
+
+    expect(await screen.findByText(/delegated meal requests & approvals/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /approve/i }));
+
+    await waitFor(() => {
+      expect(client.patch).toHaveBeenCalledWith('/tickets/delegations/approval-2/approve', {});
+    });
+
+    expect(await screen.findByText(/^active$/i)).toBeInTheDocument();
   });
 });

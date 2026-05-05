@@ -412,6 +412,86 @@ describe('Tickets Routes', () => {
     expect(res.body.entries[0].collector_employee.badge_number).toBe('BADGE002');
   });
 
+  test('POST /api/tickets/delegations/request lets an employee create a pending delegated collection request and see it in self-service summary', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+    const employeeUser = await User.create({
+      username: 'worker.requester',
+      password: await bcrypt.hash('workerPass123', 10),
+      role: 'employee',
+      employee_id: testEmployee.id
+    });
+    const employeeAgent = request.agent(app);
+
+    await employeeAgent.post('/api/auth/login').send({ username: employeeUser.username, password: 'workerPass123' });
+
+    const requestRes = await employeeAgent.post('/api/tickets/delegations/request').send({
+      delegated_to_badge_number: collector.badge_number,
+      delegation_reason: 'I am on a production line',
+      meal_type: 'lunch'
+    });
+
+    expect(requestRes.status).toBe(201);
+    expect(requestRes.body.status).toBe('requested');
+    expect(requestRes.body.request_source).toBe('employee_portal');
+    expect(requestRes.body.absent_employee.badge_number).toBe('BADGE001');
+    expect(requestRes.body.collector_employee.badge_number).toBe('BADGE002');
+
+    const summaryRes = await employeeAgent.get('/api/tickets/self-service-summary');
+
+    expect(summaryRes.status).toBe(200);
+    expect(summaryRes.body.delegation_requests).toHaveLength(1);
+    expect(summaryRes.body.delegation_requests[0].status).toBe('requested');
+    expect(summaryRes.body.delegation_requests[0].request_source).toBe('employee_portal');
+
+    const auditEntries = await AuditLog.find({ action: 'ticket.delegation.request' });
+    expect(auditEntries).toHaveLength(1);
+  });
+
+  test('PATCH /api/tickets/delegations/:id/approve promotes a requested delegation into an active approval', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+    const employeeUser = await User.create({
+      username: 'worker.approval',
+      password: await bcrypt.hash('workerPass123', 10),
+      role: 'employee',
+      employee_id: testEmployee.id
+    });
+    const employeeAgent = request.agent(app);
+
+    await employeeAgent.post('/api/auth/login').send({ username: employeeUser.username, password: 'workerPass123' });
+    await employeeAgent.post('/api/tickets/delegations/request').send({
+      delegated_to_badge_number: collector.badge_number,
+      delegation_reason: 'I am attending a safety briefing'
+    });
+
+    const approval = await DelegatedMealApproval.findOne({ absent_employee_id: testEmployee._id });
+    const approveRes = await agent.patch(`/api/tickets/delegations/${approval.id}/approve`).send({
+      note: 'Approved after supervisor confirmation'
+    });
+
+    expect(approveRes.status).toBe(200);
+    expect(approveRes.body.status).toBe('active');
+    expect(approveRes.body.approved_by_role).toBe('admin');
+    expect(approveRes.body.request_source).toBe('employee_portal');
+    expect(approveRes.body.notes).toBe('Approved after supervisor confirmation');
+
+    const listRes = await agent.get('/api/tickets/delegations?status=all');
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.entries[0].status).toBe('active');
+
+    const auditEntries = await AuditLog.find({ action: 'ticket.delegation.approve' });
+    expect(auditEntries).toHaveLength(1);
+  });
+
   test('PATCH /api/tickets/delegations/:id/revoke revokes an active delegated approval', async () => {
     const collector = await Employee.create({
       employee_number: 'EMP002',
@@ -461,10 +541,12 @@ describe('Tickets Routes', () => {
     expect(res.status).toBe(201);
     expect(res.body.delegation.collector.badge_number).toBe('BADGE002');
     expect(res.body.delegation.reason).toMatch(/production line/i);
+    expect(res.body.delegation.request_source).toBe('help_desk');
 
     const approval = await DelegatedMealApproval.findOne({ absent_employee_id: testEmployee._id });
     expect(approval).toBeTruthy();
     expect(String(approval.collector_employee_id)).toBe(String(collector._id));
+    expect(approval.request_source).toBe('help_desk');
 
     const tokenMetadata = await QRTokenMetadata.findOne({ token_jti: res.body.token.split('.')[0] ? undefined : undefined });
     expect(res.body.token).toBeTruthy();
@@ -520,6 +602,52 @@ describe('Tickets Routes', () => {
 
     const approval = await DelegatedMealApproval.findOne({ absent_employee_id: testEmployee._id });
     expect(approval.status).toBe('consumed');
+  });
+
+  test('POST /api/tickets/qr-token can issue a delegated QR from an approved employee request for vendor validation', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+    const employeeUser = await User.create({
+      username: 'worker.issuer',
+      password: await bcrypt.hash('workerPass123', 10),
+      role: 'employee',
+      employee_id: testEmployee.id
+    });
+    const employeeAgent = request.agent(app);
+
+    await employeeAgent.post('/api/auth/login').send({ username: employeeUser.username, password: 'workerPass123' });
+
+    const requestRes = await employeeAgent.post('/api/tickets/delegations/request').send({
+      delegated_to_badge_number: collector.badge_number,
+      delegation_reason: 'I am attending a safety briefing'
+    });
+    expect(requestRes.status).toBe(201);
+
+    const approveRes = await agent.patch(`/api/tickets/delegations/${requestRes.body.id}/approve`).send({});
+    expect(approveRes.status).toBe(200);
+
+    const issueRes = await employeeAgent.post('/api/tickets/qr-token').send({
+      employee_id: testEmployee.id,
+      delegation_approval_id: requestRes.body.id,
+      ttl_seconds: 300
+    });
+
+    expect(issueRes.status).toBe(201);
+    expect(issueRes.body.delegation.collector.badge_number).toBe('BADGE002');
+    expect(issueRes.body.delegation.request_source).toBe('employee_portal');
+
+    const validateRes = await agent.post('/api/tickets/validate-token').send({
+      token: issueRes.body.token,
+      meal_type: 'lunch'
+    });
+
+    expect(validateRes.status).toBe(200);
+    expect(validateRes.body.delegation.collector.badge_number).toBe('BADGE002');
+    expect(validateRes.body.delegation.request_source).toBe('employee_portal');
   });
 
   test('POST /api/tickets/validate-token rejects invalid signed token', async () => {

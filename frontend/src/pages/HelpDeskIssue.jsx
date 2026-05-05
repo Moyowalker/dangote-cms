@@ -72,7 +72,7 @@ export default function HelpDeskIssue() {
     setDelegationState((current) => ({ ...current, status: 'loading', error: '' }));
 
     try {
-      const response = await client.get('/tickets/delegations');
+      const response = await client.get('/tickets/delegations', { params: { status: 'all' } });
       setDelegationState({
         status: 'succeeded',
         entries: Array.isArray(response.data?.entries) ? response.data.entries : [],
@@ -93,6 +93,21 @@ export default function HelpDeskIssue() {
         error: err.response?.data?.error || 'Failed to load delegated collection approvals.',
         actionId: ''
       });
+    }
+  }
+
+  async function handleApproveDelegation(approvalId) {
+    setDelegationState((current) => ({ ...current, actionId: approvalId, error: '' }));
+
+    try {
+      await client.patch(`/tickets/delegations/${approvalId}/approve`, {});
+      await fetchDelegations();
+    } catch (err) {
+      setDelegationState((current) => ({
+        ...current,
+        actionId: '',
+        error: err.response?.data?.error || 'Failed to approve delegated collection request.'
+      }));
     }
   }
 
@@ -279,13 +294,13 @@ export default function HelpDeskIssue() {
 
         {!delegationState.hidden ? (
           <div className="card">
-            <div className="card-title">Delegated Collection Approvals</div>
+            <div className="card-title">Delegated Meal Requests & Approvals</div>
             {delegationState.status === 'loading' ? (
               <div className="loading">Loading delegated approvals...</div>
             ) : delegationState.error ? (
               <div className="alert alert-error">{delegationState.error}</div>
             ) : delegationState.entries.length === 0 ? (
-              <div className="text-muted">No delegated collection approvals are currently active.</div>
+              <div className="text-muted">No delegated meal requests or approvals are currently available.</div>
             ) : (
               <div className="table-container">
                 <table>
@@ -312,9 +327,28 @@ export default function HelpDeskIssue() {
                         </td>
                         <td>{entry.reason || '-'}</td>
                         <td>{entry.valid_until ? new Date(entry.valid_until).toLocaleString() : '-'}</td>
-                        <td><span className={`badge ${entry.status === 'active' ? 'badge-success' : 'badge-secondary'}`}>{entry.status}</span></td>
+                        <td><span className={`badge ${entry.status === 'active' ? 'badge-success' : entry.status === 'requested' ? 'badge-warning' : 'badge-secondary'}`}>{entry.status}</span></td>
                         <td>
-                          {entry.status === 'active' ? (
+                          {entry.status === 'requested' ? (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => handleApproveDelegation(entry.id)}
+                                disabled={delegationState.actionId === entry.id}
+                              >
+                                {delegationState.actionId === entry.id ? 'Approving...' : 'Approve'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-sm"
+                                onClick={() => handleRevokeDelegation(entry.id)}
+                                disabled={delegationState.actionId === entry.id}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : entry.status === 'active' ? (
                             <button
                               type="button"
                               className="btn btn-danger btn-sm"

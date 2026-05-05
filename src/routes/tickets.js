@@ -102,6 +102,7 @@ function buildDelegationPayload(collector, approval) {
 
   return {
     approval_id: approval.id,
+    request_source: approval.request_source || 'help_desk',
     reason: approval.reason,
     approval_date: approval.approval_date,
     valid_until: approval.valid_until,
@@ -116,6 +117,35 @@ function buildDelegationPayload(collector, approval) {
       photo_data_url: collector.photo_data_url || null
     }
   };
+}
+
+async function loadDelegationApprovalForEmployeeOrThrow(approvalId, employee) {
+  const approval = await DelegatedMealApproval.findById(approvalId);
+  if (!approval) {
+    throw makeRouteError('Delegated collection approval not found', 404, 'NOT_FOUND');
+  }
+
+  if (approval.status !== 'active') {
+    throw makeRouteError('Delegated collection approval is no longer active', 409, 'INVALID_DELEGATION');
+  }
+
+  if (new Date(approval.valid_until).getTime() <= Date.now()) {
+    await DelegatedMealApproval.findByIdAndUpdate(approval._id, { $set: { status: 'expired' } });
+    throw makeRouteError('Delegated collection approval has expired', 409, 'INVALID_DELEGATION');
+  }
+
+  if (String(approval.absent_employee_id) !== String(employee._id)) {
+    throw makeRouteError('Delegated collection approval does not match the token worker', 409, 'INVALID_DELEGATION');
+  }
+
+  const collector = await Employee.findById(approval.collector_employee_id);
+  if (!collector) {
+    throw makeRouteError('Approved collector not found', 404, 'NOT_FOUND');
+  }
+
+  assertEmployeeLifecycleActive(collector);
+
+  return { approval, collector };
 }
 
 async function hydrateDelegatedApproval(approval) {
@@ -137,7 +167,8 @@ async function hydrateDelegatedApproval(approval) {
   };
 }
 
-async function resolveDelegationRequest(body, actor, employee) {
+async function resolveDelegationRequest(body, actor, employee, options = {}) {
+  const { requireAdminApproval = true } = options;
   const delegatedToEmployeeId = typeof body?.delegated_to_employee_id === 'string' ? body.delegated_to_employee_id.trim() : '';
   const delegatedToBadgeNumber = typeof body?.delegated_to_badge_number === 'string' ? body.delegated_to_badge_number.trim() : '';
   const delegationReason = typeof body?.delegation_reason === 'string' ? body.delegation_reason.trim() : '';
@@ -147,7 +178,7 @@ async function resolveDelegationRequest(body, actor, employee) {
     return null;
   }
 
-  if (canonicalizeRole(actor?.role) !== ROLE.ADMIN) {
+  if (requireAdminApproval && canonicalizeRole(actor?.role) !== ROLE.ADMIN) {
     throw makeRouteError('Delegated collection approval requires admin access', 403, 'FORBIDDEN');
   }
 
@@ -191,32 +222,7 @@ async function loadDelegationContextOrThrow(verifiedQr, employee) {
     return null;
   }
 
-  const approval = await DelegatedMealApproval.findById(verifiedQr.delegation_approval_id);
-  if (!approval) {
-    throw makeRouteError('Delegated collection approval not found', 404, 'NOT_FOUND');
-  }
-
-  if (approval.status !== 'active') {
-    throw makeRouteError('Delegated collection approval is no longer active', 409, 'INVALID_DELEGATION');
-  }
-
-  if (new Date(approval.valid_until).getTime() <= Date.now()) {
-    await DelegatedMealApproval.findByIdAndUpdate(approval._id, { $set: { status: 'expired' } });
-    throw makeRouteError('Delegated collection approval has expired', 409, 'INVALID_DELEGATION');
-  }
-
-  if (String(approval.absent_employee_id) !== String(employee._id)) {
-    throw makeRouteError('Delegated collection approval does not match the token worker', 409, 'INVALID_DELEGATION');
-  }
-
-  const collector = await Employee.findById(approval.collector_employee_id);
-  if (!collector) {
-    throw makeRouteError('Approved collector not found', 404, 'NOT_FOUND');
-  }
-
-  assertEmployeeLifecycleActive(collector);
-
-  return { approval, collector };
+  return loadDelegationApprovalForEmployeeOrThrow(verifiedQr.delegation_approval_id, employee);
 }
 
 router.get('/delegations', requireAdmin, async (req, res) => {
@@ -224,7 +230,7 @@ router.get('/delegations', requireAdmin, async (req, res) => {
     const requestedStatus = typeof req.query.status === 'string' && req.query.status.trim()
       ? req.query.status.trim()
       : 'active';
-    const allowedStatuses = ['active', 'consumed', 'expired', 'revoked', 'all'];
+    const allowedStatuses = ['requested', 'active', 'consumed', 'expired', 'revoked', 'all'];
 
     if (!allowedStatuses.includes(requestedStatus)) {
       return sendError(res, 400, `status must be one of: ${allowedStatuses.join(', ')}`, 'VALIDATION_ERROR');
@@ -256,8 +262,8 @@ router.patch('/delegations/:id/revoke', requireAdmin, async (req, res) => {
       return sendError(res, 404, 'Delegated collection approval not found', 'NOT_FOUND');
     }
 
-    if (approval.status !== 'active') {
-      return sendError(res, 409, 'Only active delegated collection approvals can be revoked', 'VALIDATION_ERROR');
+    if (!['requested', 'active'].includes(approval.status)) {
+      return sendError(res, 409, 'Only pending or active delegated collection approvals can be revoked', 'VALIDATION_ERROR');
     }
 
     const actor = req.session.user;
@@ -290,6 +296,131 @@ router.patch('/delegations/:id/revoke', requireAdmin, async (req, res) => {
     return res.json(await hydrateDelegatedApproval(updated));
   } catch (err) {
     console.error('Ticket delegation revoke error:', err);
+    return sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
+  }
+});
+
+router.post('/delegations/request', requireAuth, async (req, res) => {
+  try {
+    const actor = req.session.user;
+    const role = canonicalizeRole(actor?.role);
+
+    if (role !== ROLE.EMPLOYEE) {
+      return sendError(res, 403, 'Only employee users can request delegated collection', 'FORBIDDEN');
+    }
+
+    if (!actor?.employee_id || !mongoose.Types.ObjectId.isValid(actor.employee_id)) {
+      return sendError(res, 403, 'Employee account is not linked to an employee profile', 'FORBIDDEN');
+    }
+
+    const employee = await Employee.findById(actor.employee_id);
+    if (!employee) {
+      return sendError(res, 404, 'Employee not found', 'NOT_FOUND');
+    }
+
+    assertEmployeeLifecycleActive(employee);
+
+    const delegationRequest = await resolveDelegationRequest(req.body || {}, actor, employee, { requireAdminApproval: false });
+    if (!delegationRequest) {
+      return sendError(
+        res,
+        400,
+        'delegated_to_employee_id or delegated_to_badge_number and delegation_reason are required',
+        'VALIDATION_ERROR'
+      );
+    }
+
+    const requestedMealType = typeof req.body?.meal_type === 'string' && req.body.meal_type.trim()
+      ? normalizeMealType(req.body.meal_type)
+      : null;
+    const approvalDate = new Date().toISOString().split('T')[0];
+    const validUntil = new Date();
+    validUntil.setHours(23, 59, 59, 999);
+
+    const approval = await DelegatedMealApproval.create({
+      absent_employee_id: employee._id,
+      collector_employee_id: delegationRequest.collector._id,
+      request_source: 'employee_portal',
+      approved_by_user_id: null,
+      approved_by_role: null,
+      approval_date: approvalDate,
+      valid_until: validUntil,
+      meal_type: requestedMealType,
+      reason: delegationRequest.reason,
+      notes: delegationRequest.notes,
+      status: 'requested'
+    });
+
+    await safeWriteAuditLog({
+      actor_user_id: actor?.id,
+      actor_role: actor?.role,
+      action: 'ticket.delegation.request',
+      entity_type: 'delegated_meal_approval',
+      entity_id: approval.id,
+      outcome: 'success',
+      metadata: {
+        absent_employee_id: employee.id,
+        collector_employee_id: delegationRequest.collector.id,
+        collector_badge_number: delegationRequest.collector.badge_number || null,
+        delegation_reason: delegationRequest.reason,
+        meal_type: requestedMealType
+      }
+    });
+
+    return res.status(201).json(await hydrateDelegatedApproval(approval));
+  } catch (err) {
+    console.error('Ticket delegation request error:', err);
+    return sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
+  }
+});
+
+router.patch('/delegations/:id/approve', requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return sendError(res, 404, 'Delegated collection approval not found', 'NOT_FOUND');
+    }
+
+    const approval = await DelegatedMealApproval.findById(req.params.id);
+    if (!approval) {
+      return sendError(res, 404, 'Delegated collection approval not found', 'NOT_FOUND');
+    }
+
+    if (approval.status !== 'requested') {
+      return sendError(res, 409, 'Only requested delegated collection approvals can be approved', 'VALIDATION_ERROR');
+    }
+
+    const actor = req.session.user;
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+    const updated = await DelegatedMealApproval.findByIdAndUpdate(
+      approval._id,
+      {
+        $set: {
+          status: 'active',
+          approved_by_user_id: actor?.id || null,
+          approved_by_role: actor?.role || null,
+          notes: note || approval.notes || null
+        }
+      },
+      { new: true }
+    );
+
+    await safeWriteAuditLog({
+      actor_user_id: actor?.id,
+      actor_role: actor?.role,
+      action: 'ticket.delegation.approve',
+      entity_type: 'delegated_meal_approval',
+      entity_id: updated.id,
+      outcome: 'success',
+      metadata: {
+        absent_employee_id: String(updated.absent_employee_id),
+        collector_employee_id: String(updated.collector_employee_id),
+        note: note || null
+      }
+    });
+
+    return res.json(await hydrateDelegatedApproval(updated));
+  } catch (err) {
+    console.error('Ticket delegation approve error:', err);
     return sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
   }
 });
@@ -335,8 +466,15 @@ router.get('/self-service-summary', requireAuth, async (req, res) => {
     const recentActivityDocs = await MealRecord.find({ employee_id: employee._id })
       .sort({ consumed_at: -1 })
       .limit(limitValue);
+    const delegationDocs = await DelegatedMealApproval.find({ absent_employee_id: employee._id });
 
     const recentActivity = recentActivityDocs.map((record) => record.toJSON());
+    const delegationRequests = await Promise.all(
+      [...delegationDocs]
+        .sort((left, right) => new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime())
+        .slice(0, limitValue)
+        .map((approval) => hydrateDelegatedApproval(approval))
+    );
     const consumedToday = mealStatuses.filter((entry) => entry.status === 'consumed').length;
     const eligibleToday = mealStatuses.filter((entry) => entry.status === 'eligible').length;
     const remainingToday = mealStatuses.reduce((total, entry) => total + (entry.remaining || 0), 0);
@@ -353,7 +491,8 @@ router.get('/self-service-summary', requireAuth, async (req, res) => {
         next_eligible_meal: mealStatuses.find((entry) => entry.status === 'eligible')?.meal_type || null
       },
       meal_statuses: mealStatuses,
-      recent_activity: recentActivity
+      recent_activity: recentActivity,
+      delegation_requests: delegationRequests
     });
   } catch (err) {
     console.error('Ticket self-service summary error:', err);
@@ -367,6 +506,8 @@ router.post('/qr-token', requireAuth, async (req, res) => {
     const { employee_id, badge_number, ttl_seconds } = req.body || {};
     let delegationApproval = null;
     let delegationRequest = null;
+    let createdDelegationApproval = false;
+    const delegationApprovalId = typeof req.body?.delegation_approval_id === 'string' ? req.body.delegation_approval_id.trim() : '';
 
     if (!employee_id && !badge_number) {
       await safeWriteAuditLog({
@@ -449,27 +590,66 @@ router.post('/qr-token', requireAuth, async (req, res) => {
       }
     }
 
-    try {
-      delegationRequest = await resolveDelegationRequest(req.body || {}, actor, employee);
-    } catch (err) {
-      await safeWriteAuditLog({
-        actor_user_id: actor?.id,
-        actor_role: actor?.role,
-        action: 'ticket.qr.issue',
-        entity_type: 'employee',
-        entity_id: employee.id,
-        outcome: 'failure',
-        reason: err.message,
-        metadata: { employee_id: employee.id, badge_number: employee.badge_number }
-      });
-      return sendError(res, err.status || 400, err.message || 'Invalid delegation request', err.code || 'VALIDATION_ERROR');
+    if (delegationApprovalId && (req.body?.delegated_to_employee_id || req.body?.delegated_to_badge_number || req.body?.delegation_reason || req.body?.delegation_notes)) {
+      return sendError(res, 400, 'delegation_approval_id cannot be combined with delegated collector fields', 'VALIDATION_ERROR');
     }
 
-    if (delegationRequest) {
+    if (delegationApprovalId) {
+      if (!mongoose.Types.ObjectId.isValid(delegationApprovalId)) {
+        return sendError(res, 400, 'delegation_approval_id must be a valid id', 'VALIDATION_ERROR');
+      }
+
+      try {
+        const existingDelegationContext = await loadDelegationApprovalForEmployeeOrThrow(delegationApprovalId, employee);
+        delegationApproval = existingDelegationContext.approval;
+        delegationRequest = {
+          collector: existingDelegationContext.collector,
+          reason: existingDelegationContext.approval.reason,
+          notes: existingDelegationContext.approval.notes || null
+        };
+      } catch (err) {
+        await safeWriteAuditLog({
+          actor_user_id: actor?.id,
+          actor_role: actor?.role,
+          action: 'ticket.qr.issue',
+          entity_type: 'employee',
+          entity_id: employee.id,
+          outcome: 'failure',
+          reason: err.message,
+          metadata: {
+            employee_id: employee.id,
+            badge_number: employee.badge_number,
+            delegation_approval_id: delegationApprovalId
+          }
+        });
+        return sendError(res, err.status || 400, err.message || 'Invalid delegation approval', err.code || 'VALIDATION_ERROR');
+      }
+    }
+
+    if (!delegationApproval) {
+      try {
+        delegationRequest = await resolveDelegationRequest(req.body || {}, actor, employee);
+      } catch (err) {
+        await safeWriteAuditLog({
+          actor_user_id: actor?.id,
+          actor_role: actor?.role,
+          action: 'ticket.qr.issue',
+          entity_type: 'employee',
+          entity_id: employee.id,
+          outcome: 'failure',
+          reason: err.message,
+          metadata: { employee_id: employee.id, badge_number: employee.badge_number }
+        });
+        return sendError(res, err.status || 400, err.message || 'Invalid delegation request', err.code || 'VALIDATION_ERROR');
+      }
+    }
+
+    if (delegationRequest && !delegationApproval) {
       const effectiveTtlSeconds = Number(ttlSeconds || DEFAULT_TTL_SECONDS);
       delegationApproval = await DelegatedMealApproval.create({
         absent_employee_id: employee._id,
         collector_employee_id: delegationRequest.collector._id,
+        request_source: 'help_desk',
         approved_by_user_id: actor?.id || null,
         approved_by_role: actor?.role || null,
         approval_date: new Date().toISOString().split('T')[0],
@@ -479,7 +659,14 @@ router.post('/qr-token', requireAuth, async (req, res) => {
         notes: delegationRequest.notes,
         status: 'active'
       });
+      createdDelegationApproval = true;
     }
+
+    const issuanceChannel = delegationApproval
+      ? delegationApproval.request_source === 'employee_portal'
+        ? 'delegated_worker_request'
+        : 'delegated_helpdesk'
+      : 'standard';
 
     let tokenPayload;
     try {
@@ -488,11 +675,11 @@ router.post('/qr-token', requireAuth, async (req, res) => {
         collectorEmployeeId: delegationRequest?.collector?._id || null,
         issuedByUserId: actor?.id || null,
         issuedByRole: actor?.role || null,
-        issuanceChannel: delegationRequest ? 'delegated_helpdesk' : 'standard',
-        delegationReason: delegationRequest?.reason || null
+        issuanceChannel,
+        delegationReason: delegationApproval?.reason || delegationRequest?.reason || null
       });
     } catch (err) {
-      if (delegationApproval?._id) {
+      if (createdDelegationApproval && delegationApproval?._id) {
         await DelegatedMealApproval.findByIdAndUpdate(delegationApproval._id, { $set: { status: 'revoked' } });
       }
       throw err;
@@ -514,7 +701,7 @@ router.post('/qr-token', requireAuth, async (req, res) => {
       metadata: {
         employee_id: employee.id,
         expires_at: tokenPayload.expires_at,
-        issuance_channel: delegationRequest ? 'delegated_helpdesk' : 'standard',
+        issuance_channel: issuanceChannel,
         delegation_approval_id: delegationApproval?.id || null,
         collector_employee_id: delegationRequest?.collector?.id || null,
         collector_badge_number: delegationRequest?.collector?.badge_number || null,

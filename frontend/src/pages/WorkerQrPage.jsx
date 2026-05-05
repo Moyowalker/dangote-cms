@@ -35,6 +35,9 @@ export default function WorkerQrPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [delegationForm, setDelegationForm] = useState({ collectorBadgeNumber: '', reason: '', mealType: '' });
+  const [delegationSaving, setDelegationSaving] = useState(false);
+  const [delegationMessage, setDelegationMessage] = useState({ type: '', text: '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
@@ -115,9 +118,40 @@ export default function WorkerQrPage() {
     }
   }
 
+  async function handleDelegationRequest(event) {
+    event.preventDefault();
+    setDelegationMessage({ type: '', text: '' });
+
+    if (!delegationForm.collectorBadgeNumber.trim() || !delegationForm.reason.trim()) {
+      setDelegationMessage({ type: 'error', text: 'Enter the approved collector badge and the reason for this request.' });
+      return;
+    }
+
+    setDelegationSaving(true);
+    try {
+      const response = await client.post('/tickets/delegations/request', {
+        delegated_to_badge_number: delegationForm.collectorBadgeNumber.trim(),
+        delegation_reason: delegationForm.reason.trim(),
+        ...(delegationForm.mealType ? { meal_type: delegationForm.mealType } : {})
+      });
+      setPortal((current) => current ? {
+        ...current,
+        delegation_requests: [response.data, ...(current.delegation_requests || [])]
+      } : current);
+      setDelegationForm({ collectorBadgeNumber: '', reason: '', mealType: '' });
+      setDelegationMessage({ type: 'success', text: 'Delegation request sent for admin approval.' });
+    } catch (err) {
+      setDelegationMessage({ type: 'error', text: err.response?.data?.error || 'Unable to send delegation request right now.' });
+    } finally {
+      setDelegationSaving(false);
+    }
+  }
+
   const worker = portal?.employee || null;
   const mealStatuses = portal?.meal_statuses || [];
   const recentActivity = portal?.recent_activity || [];
+  const delegationRequests = portal?.delegation_requests || [];
+  const activeDelegationRequest = delegationRequests.find((entry) => entry.status === 'active');
   const stats = portal?.stats || {};
   const qrAvailable = worker?.active !== false && worker?.status !== 'suspended' && worker?.status !== 'deactivated';
 
@@ -181,6 +215,28 @@ export default function WorkerQrPage() {
                   </div>
                 )}
               </div>
+
+              {activeDelegationRequest && qrAvailable ? (
+                <div className="card worker-qr-page-card">
+                  <div className="card-title">Approved Delegated Collection QR</div>
+                  <div className="worker-qr-page-intro">
+                    <p>Use this live QR only for the approved delegated collector shown below. The vendor will verify the collector badge before serving.</p>
+                    <p>
+                      Approved collector: <strong>{activeDelegationRequest.collector_employee?.name || '-'}</strong>
+                      {activeDelegationRequest.collector_employee?.badge_number ? ` (Badge ${activeDelegationRequest.collector_employee.badge_number})` : ''}.
+                    </p>
+                    <p>{activeDelegationRequest.reason || 'No delegation reason was recorded.'}</p>
+                  </div>
+                  <WorkerQrCard
+                    worker={worker}
+                    issueRequest={{ delegation_approval_id: activeDelegationRequest.id }}
+                    autoRefresh
+                    showToken={false}
+                    allowPortableActions={false}
+                    allowManualRefresh={false}
+                  />
+                </div>
+              ) : null}
 
               <div className="card worker-portal-profile-card">
                 <div className="card-title">My Profile</div>
@@ -250,6 +306,96 @@ export default function WorkerQrPage() {
                   </table>
                 </div>
               )}
+            </div>
+
+            <div className="card">
+              <div className="card-title">Delegated Meal Requests</div>
+              <p className="text-muted mb-3">
+                If you cannot collect a meal yourself, request a named collector here. The request stays pending until an admin approves it.
+              </p>
+
+              {delegationMessage.text ? (
+                <div className={`alert ${delegationMessage.type === 'success' ? 'alert-success' : 'alert-error'}`}>
+                  {delegationMessage.text}
+                </div>
+              ) : null}
+
+              <form onSubmit={handleDelegationRequest}>
+                <div className="form-group">
+                  <label htmlFor="worker-delegation-collector">Collector Badge Number</label>
+                  <input
+                    id="worker-delegation-collector"
+                    className="form-control"
+                    value={delegationForm.collectorBadgeNumber}
+                    onChange={(event) => setDelegationForm((current) => ({ ...current, collectorBadgeNumber: event.target.value }))}
+                    placeholder="Enter the badge number of the approved collector"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="worker-delegation-meal-type">Meal Type</label>
+                  <select
+                    id="worker-delegation-meal-type"
+                    className="form-control"
+                    value={delegationForm.mealType}
+                    onChange={(event) => setDelegationForm((current) => ({ ...current, mealType: event.target.value }))}
+                  >
+                    <option value="">Any eligible meal</option>
+                    <option value="breakfast">Breakfast</option>
+                    <option value="lunch">Lunch</option>
+                    <option value="dinner">Dinner</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="worker-delegation-reason">Reason</label>
+                  <textarea
+                    id="worker-delegation-reason"
+                    className="form-control"
+                    rows={3}
+                    value={delegationForm.reason}
+                    onChange={(event) => setDelegationForm((current) => ({ ...current, reason: event.target.value }))}
+                    placeholder="Why can you not collect your meal personally today?"
+                  />
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button type="submit" className="btn btn-primary" disabled={delegationSaving}>
+                    {delegationSaving ? 'Sending Request...' : 'Request Delegated Collection'}
+                  </button>
+                </div>
+              </form>
+
+              <div className="table-container" style={{ marginTop: '16px' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Collector</th>
+                      <th>Meal</th>
+                      <th>Reason</th>
+                      <th>Status</th>
+                      <th>Valid Until</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {delegationRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center text-muted" style={{ padding: '20px' }}>
+                          You have not submitted any delegated meal requests yet.
+                        </td>
+                      </tr>
+                    ) : delegationRequests.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>
+                          {entry.collector_employee?.name || '-'}
+                          <div className="text-muted">{entry.collector_employee?.badge_number || '-'}</div>
+                        </td>
+                        <td>{entry.meal_type ? (MEAL_TYPE_LABELS[entry.meal_type] || entry.meal_type) : 'Any eligible meal'}</td>
+                        <td>{entry.reason || '-'}</td>
+                        <td><span className={`badge ${entry.status === 'active' ? 'badge-success' : entry.status === 'requested' ? 'badge-warning' : 'badge-secondary'}`}>{entry.status}</span></td>
+                        <td>{entry.valid_until ? formatDateTime(entry.valid_until) : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="card worker-password-card">

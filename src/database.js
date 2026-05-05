@@ -197,6 +197,7 @@ const delegatedMealApprovalSchema = new mongoose.Schema(
   {
     absent_employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
     collector_employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    request_source: { type: String, enum: ['help_desk', 'employee_portal'], default: 'help_desk' },
     approved_by_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     approved_by_role: { type: String, default: null },
     approval_date: { type: String, required: true },
@@ -205,7 +206,7 @@ const delegatedMealApprovalSchema = new mongoose.Schema(
     reason: { type: String, required: true },
     notes: { type: String, default: null },
     issued_token_jti: { type: String, default: null },
-    status: { type: String, enum: ['active', 'consumed', 'expired', 'revoked'], default: 'active' },
+    status: { type: String, enum: ['requested', 'active', 'consumed', 'expired', 'revoked'], default: 'active' },
     consumed_at: { type: Date, default: null }
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false }, toJSON: { transform: idTransform } }

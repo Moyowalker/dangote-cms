@@ -209,6 +209,7 @@ describe('VendorInterface', () => {
           meal_type: 'lunch',
           remaining: 1,
           delegation: {
+            request_source: 'employee_portal',
             collector: {
               name: 'Bola Proxy',
               badge_number: 'BG-222'
@@ -234,6 +235,7 @@ describe('VendorInterface', () => {
           },
           remaining: 1,
           delegation: {
+            request_source: 'employee_portal',
             collector: {
               name: 'Bola Proxy',
               badge_number: 'BG-222'
@@ -249,6 +251,7 @@ describe('VendorInterface', () => {
     await user.click(screen.getByRole('button', { name: 'Validate' }));
 
     expect(await screen.findByText(/approved for collection by/i)).toBeInTheDocument();
+  expect(screen.getByText(/approval source: worker request from my meal portal, approved by admin/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Redeem' })).toBeDisabled();
 
     await user.type(screen.getByLabelText(/approved collector badge/i), 'BG-222');

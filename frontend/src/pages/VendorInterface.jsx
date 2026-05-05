@@ -145,6 +145,18 @@ function formatQueueTimestamp(value) {
   return new Date(value).toLocaleTimeString();
 }
 
+function describeDelegationApprovalSource(delegation) {
+  if (!delegation) {
+    return null;
+  }
+
+  if (delegation.request_source === 'employee_portal') {
+    return 'Worker request from My Meal Portal, approved by admin.';
+  }
+
+  return 'Created directly by help desk as a delegated collection approval.';
+}
+
 function buildOfflineActivitySummary(processedEntries) {
   const matchedEntries = processedEntries.filter((entry) => entry.client_outcome === 'synced' || entry.client_outcome === 'duplicate').length;
   const unresolvedEntries = processedEntries.filter((entry) => entry.client_outcome === 'sync_failed').length;
@@ -859,6 +871,7 @@ export default function VendorInterface() {
                       <strong>Delegated collection:</strong> this meal belongs to the absent worker above, but it is approved for collection by {validationState.data.delegation.collector?.name}
                       {validationState.data.delegation.collector?.badge_number ? ` (Badge ${validationState.data.delegation.collector.badge_number})` : ''}.
                       {validationState.data.delegation.reason ? ` Reason: ${validationState.data.delegation.reason}.` : ''}
+                      {describeDelegationApprovalSource(validationState.data.delegation) ? ` Approval source: ${describeDelegationApprovalSource(validationState.data.delegation)}` : ''}
                     </div>
                   ) : null}
                   <p><strong>Meal Type:</strong> {validationState.data?.meal_type}</p>
@@ -929,7 +942,12 @@ export default function VendorInterface() {
                   </h3>
                   {redeemState.data?.employee ? renderWorkerIdentity(redeemState.data.employee) : null}
                   {redeemState.data?.delegation ? (
-                    <p><strong>Collected by:</strong> {redeemState.data.delegation.collector?.name} ({redeemState.data.delegation.collector?.badge_number})</p>
+                    <>
+                      <p><strong>Collected by:</strong> {redeemState.data.delegation.collector?.name} ({redeemState.data.delegation.collector?.badge_number})</p>
+                      {describeDelegationApprovalSource(redeemState.data.delegation) ? (
+                        <p><strong>Approval source:</strong> {describeDelegationApprovalSource(redeemState.data.delegation)}</p>
+                      ) : null}
+                    </>
                   ) : null}
                   <p><strong>Meal Type:</strong> {redeemState.data?.record?.meal_type}</p>
                   <p><strong>Transaction reference:</strong> #{redeemState.data?.transaction?.transaction_reference || redeemState.data?.record?.id}</p>
