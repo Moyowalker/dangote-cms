@@ -148,6 +148,34 @@ async function loadDelegationApprovalForEmployeeOrThrow(approvalId, employee) {
   return { approval, collector };
 }
 
+async function loadDelegationContextForCollectorBadgeOrThrow(employee, collectorBadgeNumber, mealType) {
+  const collector = await Employee.findOne({ badge_number: collectorBadgeNumber });
+  if (!collector) {
+    throw makeRouteError('Approved collector not found', 404, 'NOT_FOUND');
+  }
+
+  assertEmployeeLifecycleActive(collector);
+
+  const candidateApprovals = await DelegatedMealApproval.find({
+    absent_employee_id: employee._id,
+    collector_employee_id: collector._id,
+    status: 'active',
+    request_source: 'employee_portal'
+  });
+
+  const approval = candidateApprovals.find((entry) => {
+    const stillValid = new Date(entry.valid_until).getTime() > Date.now();
+    const mealMatches = !entry.meal_type || entry.meal_type === mealType;
+    return stillValid && mealMatches;
+  });
+
+  if (!approval) {
+    throw makeRouteError('No active delegated collection approval matches this worker, collector, and meal', 403, 'INVALID_DELEGATION');
+  }
+
+  return { approval, collector };
+}
+
 async function hydrateDelegatedApproval(approval) {
   if (!approval) {
     return null;
@@ -725,7 +753,7 @@ router.post('/qr-token', requireAuth, async (req, res) => {
 router.get('/validate/:badge_number', requireVendorAccess, async (req, res) => {
   try {
     const { badge_number } = req.params;
-    const { meal_type, date, canteen_location } = req.query;
+    const { meal_type, date, canteen_location, collector_badge_number } = req.query;
     const actor = req.session.user;
 
     let employee;
@@ -783,6 +811,31 @@ router.get('/validate/:badge_number', requireVendorAccess, async (req, res) => {
       canteenLocation: canteen_location || null
     });
     const balance = eligibility.balance || { allowed: 0, consumed: 0 };
+    let delegationContext = null;
+
+    if (typeof collector_badge_number === 'string' && collector_badge_number.trim()) {
+      try {
+        delegationContext = await loadDelegationContextForCollectorBadgeOrThrow(employee, collector_badge_number.trim(), checkMealType);
+      } catch (err) {
+        await safeWriteAuditLog({
+          actor_user_id: actor?.id,
+          actor_role: actor?.role,
+          action: 'ticket.validate',
+          entity_type: 'employee',
+          entity_id: employee.id,
+          outcome: 'failure',
+          reason: err.message,
+          metadata: {
+            badge_number,
+            collector_badge_number: collector_badge_number.trim(),
+            meal_type: checkMealType,
+            date: checkDate,
+            canteen_location: canteen_location || null
+          }
+        });
+        return sendError(res, err.status || 403, err.message || 'Delegated collection is not valid', err.code || 'INVALID_DELEGATION');
+      }
+    }
 
     await safeWriteAuditLog({
       actor_user_id: actor?.id,
@@ -797,6 +850,9 @@ router.get('/validate/:badge_number', requireVendorAccess, async (req, res) => {
         meal_type: checkMealType,
         date: checkDate,
         canteen_location: canteen_location || null,
+        collector_badge_number: typeof collector_badge_number === 'string' && collector_badge_number.trim() ? collector_badge_number.trim() : null,
+        delegation_approval_id: delegationContext?.approval?.id || null,
+        collector_employee_id: delegationContext?.collector?.id || null,
         allowed: balance.allowed,
         consumed: balance.consumed,
         remaining: Math.max((balance.allowed || 0) - (balance.consumed || 0), 0)
@@ -812,7 +868,8 @@ router.get('/validate/:badge_number', requireVendorAccess, async (req, res) => {
       allowed: balance.allowed,
       consumed: balance.consumed,
       remaining: Math.max((balance.allowed || 0) - (balance.consumed || 0), 0),
-      message: eligibility.ok ? null : eligibility.error
+      message: eligibility.ok ? null : eligibility.error,
+      delegation: buildDelegationPayload(delegationContext?.collector || null, delegationContext?.approval || null)
     });
   } catch (err) {
     console.error('Ticket validate error:', err);
@@ -948,7 +1005,8 @@ router.post('/consume', requireVendorAccess, async (req, res) => {
       mealType: normalizedMealType,
       canteenLocation,
       notes,
-      collectorBadgeNumber
+      collectorBadgeNumber,
+      delegationApprovalId
     } = normalizedPayload;
 
     let verifiedQr = null;
@@ -1030,7 +1088,15 @@ router.post('/consume', requireVendorAccess, async (req, res) => {
 
     let delegationContext = null;
     try {
-      delegationContext = await loadDelegationContextOrThrow(verifiedQr, employee);
+      delegationContext = verifiedQr
+        ? await loadDelegationContextOrThrow(verifiedQr, employee)
+        : delegationApprovalId
+          ? await loadDelegationApprovalForEmployeeOrThrow(delegationApprovalId, employee)
+          : null;
+
+      if (delegationContext && !verifiedQr && delegationContext.approval.request_source !== 'employee_portal') {
+        throw makeRouteError('Offline delegated redemption requires an approved employee portal delegation', 403, 'INVALID_DELEGATION');
+      }
       if (delegationContext && !collectorBadgeNumber) {
         throw makeRouteError('collector_badge_number is required for delegated collection', 400, 'VALIDATION_ERROR');
       }
@@ -1049,9 +1115,10 @@ router.post('/consume', requireVendorAccess, async (req, res) => {
         metadata: {
           badge_number: employee.badge_number,
           collector_badge_number: collectorBadgeNumber || null,
+          delegation_approval_id: delegationApprovalId || verifiedQr?.delegation_approval_id || null,
           meal_type: normalizedMealType,
           token_jti: verifiedQr?.jti || null,
-          delegation_approval_id: verifiedQr?.delegation_approval_id || null
+          delegation_approval_id: delegationContext?.approval?.id || delegationApprovalId || verifiedQr?.delegation_approval_id || null
         }
       });
       return sendError(res, err.status || 403, err.message || 'Delegated collection is not valid', err.code || 'INVALID_DELEGATION');

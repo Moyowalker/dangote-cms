@@ -22,7 +22,7 @@ function normalizeMealType(mealType) {
 }
 
 function normalizeConsumePayload(payload) {
-  const { badge_number, token, meal_type, canteen_location, notes, collector_badge_number } = payload;
+  const { badge_number, token, meal_type, canteen_location, notes, collector_badge_number, delegation_approval_id } = payload;
   const prohibitedClientFields = ['allowed', 'consumed', 'remaining', 'can_consume', 'entitlement', 'transaction_reference'];
 
   const suppliedProhibitedField = prohibitedClientFields.find((field) => Object.prototype.hasOwnProperty.call(payload, field));
@@ -55,13 +55,18 @@ function normalizeConsumePayload(payload) {
     throw makeError('collector_badge_number must be a non-empty string', 400, 'VALIDATION_ERROR');
   }
 
+  if (delegation_approval_id !== undefined && (typeof delegation_approval_id !== 'string' || !delegation_approval_id.trim())) {
+    throw makeError('delegation_approval_id must be a non-empty string', 400, 'VALIDATION_ERROR');
+  }
+
   return {
     badgeNumber: normalizedBadgeNumber,
     token: normalizedToken || null,
     mealType: normalizedMealType,
     canteenLocation: canteen_location ? canteen_location.trim() : 'Main Canteen',
     notes: notes || null,
-    collectorBadgeNumber: collector_badge_number ? collector_badge_number.trim() : null
+    collectorBadgeNumber: collector_badge_number ? collector_badge_number.trim() : null,
+    delegationApprovalId: delegation_approval_id ? delegation_approval_id.trim() : null
   };
 }
 

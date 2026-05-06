@@ -282,7 +282,9 @@ export default function VendorInterface() {
         await client.post('/tickets/consume', {
           badge_number: item.badgeNumber,
           meal_type: item.mealType,
-          canteen_location: item.canteenLocation
+          canteen_location: item.canteenLocation,
+          ...(item.collectorBadgeNumber ? { collector_badge_number: item.collectorBadgeNumber } : {}),
+          ...(item.delegationApprovalId ? { delegation_approval_id: item.delegationApprovalId } : {})
         }, {
           timeout: REQUEST_TIMEOUT_MS
         });
@@ -429,7 +431,6 @@ export default function VendorInterface() {
     setValidationState({ status: 'processing', data: null, error: null });
     setRedeemState(buildInitialRedeemState());
     setIdentityConfirmed(false);
-    setCollectorBadgeNumber('');
 
     if (!isOnline) {
       if (!isBadgeLookup) {
@@ -441,7 +442,11 @@ export default function VendorInterface() {
         return;
       }
 
-      const cachedSnapshot = getVendorValidationSnapshot({ badgeNumber: normalizedBadge, mealType });
+      const cachedSnapshot = getVendorValidationSnapshot({
+        badgeNumber: normalizedBadge,
+        mealType,
+        collectorBadgeNumber: collectorBadgeNumber.trim()
+      });
       const cachedData = buildCachedValidationData(cachedSnapshot);
 
       if (cachedData) {
@@ -459,7 +464,10 @@ export default function VendorInterface() {
     try {
       const res = isBadgeLookup
         ? await client.get(`/tickets/validate/${encodeURIComponent(normalizedBadge)}`, {
-          params: { meal_type: mealType },
+          params: {
+            meal_type: mealType,
+            ...(collectorBadgeNumber.trim() ? { collector_badge_number: collectorBadgeNumber.trim() } : {})
+          },
           timeout: REQUEST_TIMEOUT_MS
         })
         : await client.post('/tickets/validate-token', {
@@ -474,6 +482,7 @@ export default function VendorInterface() {
         storeVendorValidationSnapshot({
           badgeNumber: normalizedBadge,
           mealType,
+          collectorBadgeNumber: collectorBadgeNumber.trim(),
           data: res.data
         });
       }
@@ -527,7 +536,10 @@ export default function VendorInterface() {
         badgeNumber: normalizedBadge,
         mealType,
         employee: validationState.data?.employee || null,
-        canteenLocation: 'Main Canteen'
+        canteenLocation: 'Main Canteen',
+        collectorBadgeNumber: validationState.data?.delegation ? collectorBadgeNumber.trim() : null,
+        delegationApprovalId: validationState.data?.delegation?.approval_id || null,
+        delegation: validationState.data?.delegation || null
       });
 
       const nextQueue = readOfflineRedemptionQueue();
@@ -575,6 +587,9 @@ export default function VendorInterface() {
 
       if (validationState.data?.delegation) {
         requestBody.collector_badge_number = collectorBadgeNumber.trim();
+        if (validationState.data?.delegation?.approval_id && lookupMode === 'badge') {
+          requestBody.delegation_approval_id = validationState.data.delegation.approval_id;
+        }
       }
 
       const res = await client.post('/tickets/consume', {
@@ -835,6 +850,25 @@ export default function VendorInterface() {
               <option value="lunch">Lunch</option>
               <option value="dinner">Dinner</option>
             </select>
+            {lookupMode === 'badge' ? (
+              <div className="vendor-confirmation-check" style={{ maxWidth: '500px', margin: '12px auto 0' }}>
+                <label htmlFor="collector-badge-number-badge-mode" style={{ display: 'block', marginBottom: '8px' }}>
+                  Collector Badge For Delegated Collection (Optional)
+                </label>
+                <input
+                  id="collector-badge-number-badge-mode"
+                  className="form-control"
+                  aria-label="Collector Badge For Delegated Collection"
+                  value={collectorBadgeNumber}
+                  onChange={(event) => setCollectorBadgeNumber(event.target.value)}
+                  placeholder="Enter collector badge before validation when proving a delegated meal"
+                  disabled={disableActions}
+                />
+                <div className="text-muted" style={{ marginTop: '8px' }}>
+                  Enter this before validating when you need to pre-sync an approved delegated meal for offline service.
+                </div>
+              </div>
+            ) : null}
             <button
               type="submit"
               className="btn btn-secondary"
@@ -888,7 +922,7 @@ export default function VendorInterface() {
             </div>
           )}
 
-          {validationState.data?.delegation ? (
+          {lookupMode === 'qr' && validationState.data?.delegation ? (
             <div className="vendor-confirmation-check" style={{ maxWidth: '500px', margin: '16px auto 0' }}>
               <label htmlFor="collector-badge-number" style={{ display: 'block', marginBottom: '8px' }}>Approved Collector Badge</label>
               <input

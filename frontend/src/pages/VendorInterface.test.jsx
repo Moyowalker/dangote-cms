@@ -383,6 +383,116 @@ describe('VendorInterface', () => {
     expect(readOfflineRedemptionQueue()).toHaveLength(1);
   });
 
+  it('uses cached delegated badge validation offline and syncs the exact approval proof later', async () => {
+    const user = userEvent.setup();
+
+    storeVendorValidationSnapshot({
+      badgeNumber: 'BG-2101',
+      mealType: 'lunch',
+      collectorBadgeNumber: 'BG-222',
+      data: {
+        employee: {
+          id: 'emp-2101',
+          name: 'Delegated Offline Worker',
+          employee_number: 'EMP-2101',
+          badge_number: 'BG-2101',
+          department: 'Warehouse'
+        },
+        can_consume: true,
+        meal_type: 'lunch',
+        remaining: 1,
+        date: new Date().toISOString().split('T')[0],
+        delegation: {
+          approval_id: 'approval-offline-1',
+          request_source: 'employee_portal',
+          collector: {
+            name: 'Bola Proxy',
+            badge_number: 'BG-222'
+          },
+          reason: 'Worker is at a safety briefing'
+        }
+      }
+    });
+
+    client.post
+      .mockResolvedValueOnce({
+        data: {
+          employee: {
+            name: 'Delegated Offline Worker',
+            employee_number: 'EMP-2101',
+            badge_number: 'BG-2101'
+          },
+          record: {
+            id: 'txn-offline-delegated-001',
+            meal_type: 'lunch',
+            collector_employee_id: 'collector-1'
+          },
+          transaction: {
+            transaction_reference: 'txn-offline-delegated-001'
+          },
+          remaining: 0,
+          delegation: {
+            approval_id: 'approval-offline-1',
+            request_source: 'employee_portal',
+            collector: {
+              name: 'Bola Proxy',
+              badge_number: 'BG-222'
+            }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'batch-sync-002',
+          created_at: '2099-03-23T12:00:00.000Z',
+          batch_date: new Date().toISOString().split('T')[0],
+          device_id: 'device-sync-002',
+          device_label: 'Dangote Vendor Device',
+          canteen_location: 'Main Canteen',
+          status: 'reconciled',
+          summary: {
+            total_entries: 1,
+            matched_entries: 1,
+            unresolved_entries: 0,
+            missing_transaction_links: 0,
+            employee_not_found_entries: 0,
+            client_failed_entries: 0
+          },
+          entries: []
+        }
+      });
+
+    render(<VendorInterface />);
+
+    window.dispatchEvent(new Event('offline'));
+
+    await user.type(screen.getByRole('textbox', { name: /badge number/i }), 'BG-2101');
+    await user.type(screen.getByRole('textbox', { name: /collector badge for delegated collection/i }), 'BG-222');
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(await screen.findByText(/approval source: worker request from my meal portal, approved by admin/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /queue redeem/i }));
+
+    expect(readOfflineRedemptionQueue()).toHaveLength(1);
+    expect(readOfflineRedemptionQueue()[0].delegationApprovalId).toBe('approval-offline-1');
+    expect(readOfflineRedemptionQueue()[0].collectorBadgeNumber).toBe('BG-222');
+
+    window.dispatchEvent(new Event('online'));
+
+    await waitFor(() => {
+      expect(client.post).toHaveBeenNthCalledWith(1, '/tickets/consume', {
+        badge_number: 'BG-2101',
+        meal_type: 'lunch',
+        canteen_location: 'Main Canteen',
+        collector_badge_number: 'BG-222',
+        delegation_approval_id: 'approval-offline-1'
+      }, {
+        timeout: 8000
+      });
+    });
+  });
+
   it('syncs queued offline redemptions after the connection returns', async () => {
     const user = userEvent.setup();
     const today = new Date().toISOString().split('T')[0];

@@ -650,6 +650,59 @@ describe('Tickets Routes', () => {
     expect(validateRes.body.delegation.request_source).toBe('employee_portal');
   });
 
+  test('GET /api/tickets/validate/:badge resolves approved employee delegation by collector badge and consume accepts approval id', async () => {
+    const collector = await Employee.create({
+      employee_number: 'EMP002',
+      name: 'Collector Employee',
+      department: 'Operations',
+      badge_number: 'BADGE002'
+    });
+    const employeeUser = await User.create({
+      username: 'worker.offline-delegation',
+      password: await bcrypt.hash('workerPass123', 10),
+      role: 'employee',
+      employee_id: testEmployee.id
+    });
+    const employeeAgent = request.agent(app);
+
+    await employeeAgent.post('/api/auth/login').send({ username: employeeUser.username, password: 'workerPass123' });
+
+    const requestRes = await employeeAgent.post('/api/tickets/delegations/request').send({
+      delegated_to_badge_number: collector.badge_number,
+      delegation_reason: 'I am attending a safety briefing',
+      meal_type: 'lunch'
+    });
+    expect(requestRes.status).toBe(201);
+
+    const approveRes = await agent.patch(`/api/tickets/delegations/${requestRes.body.id}/approve`).send({});
+    expect(approveRes.status).toBe(200);
+
+    const validateRes = await agent.get('/api/tickets/validate/BADGE001').query({
+      meal_type: 'lunch',
+      collector_badge_number: 'BADGE002'
+    });
+
+    expect(validateRes.status).toBe(200);
+    expect(validateRes.body.delegation.approval_id).toBe(requestRes.body.id);
+    expect(validateRes.body.delegation.collector.badge_number).toBe('BADGE002');
+    expect(validateRes.body.delegation.request_source).toBe('employee_portal');
+
+    const consumeRes = await agent.post('/api/tickets/consume').send({
+      badge_number: 'BADGE001',
+      meal_type: 'lunch',
+      canteen_location: 'Main Canteen',
+      collector_badge_number: 'BADGE002',
+      delegation_approval_id: requestRes.body.id
+    });
+
+    expect(consumeRes.status).toBe(201);
+    expect(consumeRes.body.delegation.approval_id).toBe(requestRes.body.id);
+    expect(consumeRes.body.delegation.request_source).toBe('employee_portal');
+
+    const approval = await DelegatedMealApproval.findById(requestRes.body.id);
+    expect(approval.status).toBe('consumed');
+  });
+
   test('POST /api/tickets/validate-token rejects invalid signed token', async () => {
     const res = await agent.post('/api/tickets/validate-token').send({
       token: 'invalid.token',

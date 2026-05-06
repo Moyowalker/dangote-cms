@@ -42,26 +42,27 @@ function generateIdentifier(prefix) {
   return prefix ? `${prefix}-${base}` : base;
 }
 
-function buildValidationCacheKey({ badgeNumber, mealType }) {
-  return `${String(badgeNumber || '').trim().toUpperCase()}::${String(mealType || '').trim().toLowerCase()}`;
+function buildValidationCacheKey({ badgeNumber, mealType, collectorBadgeNumber = '' }) {
+  return `${String(badgeNumber || '').trim().toUpperCase()}::${String(mealType || '').trim().toLowerCase()}::${String(collectorBadgeNumber || '').trim().toUpperCase()}`;
 }
 
-export function storeVendorValidationSnapshot({ badgeNumber, mealType, data }) {
+export function storeVendorValidationSnapshot({ badgeNumber, mealType, collectorBadgeNumber = '', data }) {
   const cache = readJson(VALIDATION_CACHE_KEY, {});
-  const cacheKey = buildValidationCacheKey({ badgeNumber, mealType });
+  const cacheKey = buildValidationCacheKey({ badgeNumber, mealType, collectorBadgeNumber });
 
   cache[cacheKey] = {
     cachedAt: Date.now(),
     date: data?.date || new Date().toISOString().split('T')[0],
+    collectorBadgeNumber: String(collectorBadgeNumber || '').trim().toUpperCase() || null,
     data
   };
 
   writeJson(VALIDATION_CACHE_KEY, cache);
 }
 
-export function getVendorValidationSnapshot({ badgeNumber, mealType, date = new Date().toISOString().split('T')[0] }) {
+export function getVendorValidationSnapshot({ badgeNumber, mealType, collectorBadgeNumber = '', date = new Date().toISOString().split('T')[0] }) {
   const cache = readJson(VALIDATION_CACHE_KEY, {});
-  const cacheKey = buildValidationCacheKey({ badgeNumber, mealType });
+  const cacheKey = buildValidationCacheKey({ badgeNumber, mealType, collectorBadgeNumber });
   const snapshot = cache[cacheKey];
 
   if (!snapshot) {
@@ -97,7 +98,7 @@ export function hasPendingOfflineRedemption({ badgeNumber, mealType, date = new 
   ));
 }
 
-export function enqueueOfflineRedemption({ badgeNumber, mealType, employee, canteenLocation, date = new Date().toISOString().split('T')[0] }) {
+export function enqueueOfflineRedemption({ badgeNumber, mealType, employee, canteenLocation, collectorBadgeNumber = null, delegationApprovalId = null, delegation = null, date = new Date().toISOString().split('T')[0] }) {
   const queue = readOfflineRedemptionQueue();
   const entry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -105,6 +106,9 @@ export function enqueueOfflineRedemption({ badgeNumber, mealType, employee, cant
     mealType,
     employee,
     canteenLocation,
+    collectorBadgeNumber,
+    delegationApprovalId,
+    delegation,
     date,
     queuedAt: new Date().toISOString(),
     attemptCount: 0,
