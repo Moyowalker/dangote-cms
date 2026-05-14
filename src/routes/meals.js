@@ -58,7 +58,7 @@ router.delete('/meal-plans/:id', requireAdmin, async (req, res) => {
 
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
-router.get('/menu-items', requireAuth, async (req, res) => {
+router.get('/menu-items', requireAdmin, async (req, res) => {
   try {
     const items = await listMenuItems(req.query);
     res.json(items);

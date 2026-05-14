@@ -306,8 +306,6 @@ const entitlementPolicyStore = new Map();
 const workerEntitlementBalanceStore = new Map();
 const transactionStore = new Map();
 const reconciliationRecordStore = new Map();
-const offlineReconciliationBatchStore = new Map();
-const delegatedMealApprovalStore = new Map();
 const qrTokenMetadataStore = new Map();
 const auditLogStore = new Map();
 
@@ -330,8 +328,6 @@ const WorkerEntitlementBalance = createModel(workerEntitlementBalanceStore);
 const EmployeeEntitlementBalance = WorkerEntitlementBalance;
 const Transaction = createModel(transactionStore, ['transaction_reference']);
 const ReconciliationRecord = createModel(reconciliationRecordStore);
-const OfflineReconciliationBatch = createModel(offlineReconciliationBatchStore);
-const DelegatedMealApproval = createModel(delegatedMealApprovalStore, [], { status: 'active', consumed_at: null });
 const QRTokenMetadata = createModel(qrTokenMetadataStore, ['token_jti']);
 const AuditLog = createModel(auditLogStore);
 
@@ -435,8 +431,6 @@ module.exports = {
   MealRecord,
   Transaction,
   ReconciliationRecord,
-  OfflineReconciliationBatch,
-  DelegatedMealApproval,
   QRTokenMetadata,
   AuditLog
 };

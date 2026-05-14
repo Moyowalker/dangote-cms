@@ -82,6 +82,13 @@ export default function MenuManagement() {
   const summary = useMemo(() => summarizeMenuItems(menuItems), [menuItems]);
 
   const fetchMenuItems = useCallback(async () => {
+    if (!canManage) {
+      setLoading(false);
+      setError('');
+      setMenuItems([]);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -103,7 +110,7 @@ export default function MenuManagement() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [canManage, filters]);
 
   useEffect(() => {
     fetchMenuItems();
@@ -238,58 +245,61 @@ export default function MenuManagement() {
 
       <div className="pg-body">
         {!canManage ? (
-          <div className="alert alert-info">
-            You have read-only access to menu items. Contact an administrator to add, update, or delete records.
+          <div className="alert alert-error">
+            Menu item management is restricted to admin users.
           </div>
         ) : null}
 
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {success ? <div className="alert alert-success">{success}</div> : null}
+        {!canManage ? null : (
+          <>
 
-        <div className="card">
-          <div className="card-title">Filter Menu Items</div>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              fetchMenuItems();
-            }}
-          >
-            <div className="filter-grid">
-              <div className="form-group">
-                <label htmlFor="menu-date">Date</label>
-                <input
-                  id="menu-date"
-                  name="date"
-                  type="date"
-                  className="form-control"
-                  value={filters.date}
-                  onChange={handleFilterChange}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="menu-meal-type">Meal Type</label>
-                <select
-                  id="menu-meal-type"
-                  name="mealType"
-                  className="form-control"
-                  value={filters.mealType}
-                  onChange={handleFilterChange}
-                >
-                  <option value="">All meal types</option>
-                  {MEAL_TYPES.map((type) => (
-                    <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="filters-actions">
-              <button type="submit" className="btn btn-primary">Apply</button>
-              <button type="button" className="btn btn-secondary" onClick={handleResetFilters}>Reset</button>
-            </div>
-          </form>
-        </div>
+            {error ? <div className="alert alert-error">{error}</div> : null}
+            {success ? <div className="alert alert-success">{success}</div> : null}
 
-        <div className="stats-grid menu-stat-grid">
+            <div className="card">
+              <div className="card-title">Filter Menu Items</div>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  fetchMenuItems();
+                }}
+              >
+                <div className="filter-grid">
+                  <div className="form-group">
+                    <label htmlFor="menu-date">Date</label>
+                    <input
+                      id="menu-date"
+                      name="date"
+                      type="date"
+                      className="form-control"
+                      value={filters.date}
+                      onChange={handleFilterChange}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="menu-meal-type">Meal Type</label>
+                    <select
+                      id="menu-meal-type"
+                      name="mealType"
+                      className="form-control"
+                      value={filters.mealType}
+                      onChange={handleFilterChange}
+                    >
+                      <option value="">All meal types</option>
+                      {MEAL_TYPES.map((type) => (
+                        <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="filters-actions">
+                  <button type="submit" className="btn btn-primary">Apply</button>
+                  <button type="button" className="btn btn-secondary" onClick={handleResetFilters}>Reset</button>
+                </div>
+              </form>
+            </div>
+
+            <div className="stats-grid menu-stat-grid">
           <div className="stat-card">
             <div className="stat-value">{summary.total}</div>
             <div className="stat-label">Items</div>
@@ -310,60 +320,62 @@ export default function MenuManagement() {
             <div className="stat-value">{summary.inactive}</div>
             <div className="stat-label">Inactive</div>
           </div>
-        </div>
-
-        <div className="card">
-          <div className="card-title">Menu Items</div>
-          {loading ? (
-            <div className="loading">Loading menu items...</div>
-          ) : (
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Description</th>
-                    <th>Meal Type</th>
-                    <th>Price</th>
-                    <th>Available Date</th>
-                    <th>Status</th>
-                    {canManage ? <th>Actions</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {menuItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={canManage ? 7 : 6} className="text-center text-muted" style={{ padding: '20px' }}>
-                        No menu items available for this filter.
-                      </td>
-                    </tr>
-                  ) : menuItems.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.name}</td>
-                      <td>{item.description || '-'}</td>
-                      <td><span className="badge badge-info">{item.meal_type}</span></td>
-                      <td>{Number(item.price || 0).toLocaleString()}</td>
-                      <td>{item.available_date}</td>
-                      <td>
-                        <span className={`badge ${item.active ? 'badge-success' : 'badge-warning'}`}>
-                          {item.active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      {canManage ? (
-                        <td>
-                          <div className="menu-actions">
-                            <button className="btn btn-sm btn-secondary" onClick={() => openEditModal(item)}>Edit</button>
-                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item)}>Delete</button>
-                          </div>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
-          )}
-        </div>
+
+            <div className="card">
+              <div className="card-title">Menu Items</div>
+              {loading ? (
+                <div className="loading">Loading menu items...</div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Meal Type</th>
+                        <th>Price</th>
+                        <th>Available Date</th>
+                        <th>Status</th>
+                        {canManage ? <th>Actions</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {menuItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={canManage ? 7 : 6} className="text-center text-muted" style={{ padding: '20px' }}>
+                            No menu items available for this filter.
+                          </td>
+                        </tr>
+                      ) : menuItems.map((item) => (
+                        <tr key={item.id}>
+                          <td>{item.name}</td>
+                          <td>{item.description || '-'}</td>
+                          <td><span className="badge badge-info">{item.meal_type}</span></td>
+                          <td>{Number(item.price || 0).toLocaleString()}</td>
+                          <td>{item.available_date}</td>
+                          <td>
+                            <span className={`badge ${item.active ? 'badge-success' : 'badge-warning'}`}>
+                              {item.active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          {canManage ? (
+                            <td>
+                              <div className="menu-actions">
+                                <button className="btn btn-sm btn-secondary" onClick={() => openEditModal(item)}>Edit</button>
+                                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item)}>Delete</button>
+                              </div>
+                            </td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {showModal ? (

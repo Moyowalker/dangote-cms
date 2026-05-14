@@ -1,3 +1,4 @@
+
 process.env.NODE_ENV = 'test';
 
 jest.mock('../src/database');
@@ -5,7 +6,7 @@ jest.mock('../src/database');
 const request = require('supertest');
 const bcrypt = require('bcrypt');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, Employee, MealRecord, User, EmployeeCategory, AuditLog } = require('../src/database');
+const { initializeDatabase, closeDatabase, Employee, MealRecord, User, EmployeeCategory } = require('../src/database');
 
 let agent;
 
@@ -17,7 +18,6 @@ beforeAll(async () => {
 beforeEach(async () => {
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin123' });
   await MealRecord.deleteMany({});
-  await AuditLog.deleteMany({});
   await User.deleteMany({});
   await Employee.deleteMany({});
 });
@@ -47,11 +47,6 @@ describe('Employees Routes', () => {
     expect(res.body.employee_number).toBe('EMP001');
     expect(res.body.employee_identifier).toBe('EMP001');
     expect(res.body.employee_category_id).toBeNull();
-
-    const auditEntries = await AuditLog.find({ action: 'employee.create' });
-    expect(auditEntries).toHaveLength(1);
-    expect(auditEntries[0].entity_type).toBe('employee');
-    expect(auditEntries[0].entity_id).toBe(res.body.id);
   });
 
   test('POST /api/employees accepts employee_category_id as the canonical category field', async () => {

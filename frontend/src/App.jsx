@@ -16,7 +16,7 @@ import Reconciliation from './pages/Reconciliation';
 import WorkerQrPage from './pages/WorkerQrPage';
 import MenuManagement from './pages/MenuManagement';
 import PwaInstallBanner from './components/PwaInstallBanner';
-import { HELP_DESK_ROLES, OFFLINE_ACTIVITY_ROLES, REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
+import { HELP_DESK_ROLES, MENU_MANAGEMENT_ROLES, OFFLINE_ACTIVITY_ROLES, REPORT_VIEWER_ROLES, VENDOR_ROLES, WORKFORCE_VIEW_ROLES } from './auth/roles';
 
 export default function App() {
   const location = useLocation();
@@ -71,7 +71,7 @@ export default function App() {
             } />
             <Route path="/my-qr" element={<Navigate to="/my-portal" replace />} />
             <Route path="/menu" element={
-              <ProtectedRoute roles={REPORT_VIEWER_ROLES}>
+              <ProtectedRoute roles={MENU_MANAGEMENT_ROLES}>
                 <MenuManagement />
               </ProtectedRoute>
             } />

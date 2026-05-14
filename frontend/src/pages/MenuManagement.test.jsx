@@ -176,27 +176,13 @@ describe('MenuManagement', () => {
     });
   });
 
-  it('shows read-only mode for non-admin report viewer role', async () => {
+  it('shows access denied state for non-admin users', async () => {
     useAuth.mockReturnValue({ user: { username: 'viewer-user', role: 'viewer' } });
-
-    client.get.mockResolvedValue({
-      data: [
-        {
-          id: '1',
-          name: 'Porridge',
-          description: '',
-          meal_type: 'breakfast',
-          price: 350,
-          available_date: '2026-04-26',
-          active: true
-        }
-      ]
-    });
 
     render(<MenuManagement />);
 
-    expect(await screen.findByText('Porridge')).toBeInTheDocument();
-    expect(screen.getByText(/read-only access to menu items/i)).toBeInTheDocument();
+    expect(await screen.findByText(/menu item management is restricted to admin users/i)).toBeInTheDocument();
+    expect(client.get).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /add menu item/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();

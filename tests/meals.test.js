@@ -2,9 +2,10 @@ process.env.NODE_ENV = 'test';
 
 jest.mock('../src/database');
 
+const bcrypt = require('bcrypt');
 const request = require('supertest');
 const app = require('../src/app');
-const { initializeDatabase, closeDatabase, MealPlan, MenuItem } = require('../src/database');
+const { initializeDatabase, closeDatabase, MealPlan, MenuItem, User } = require('../src/database');
 
 let agent;
 
@@ -98,5 +99,29 @@ describe('Meals Routes', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  test('GET /api/menu-items forbids viewer users', async () => {
+    const viewerAgent = request.agent(app);
+    await User.create({ username: 'viewer-user', password: await bcrypt.hash('viewer123', 10), role: 'viewer' });
+
+    await viewerAgent.post('/api/auth/login').send({ username: 'viewer-user', password: 'viewer123' });
+
+    const res = await viewerAgent.get('/api/menu-items');
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  test('GET /api/menu-items forbids hr users', async () => {
+    const hrAgent = request.agent(app);
+    await User.create({ username: 'hr-user', password: await bcrypt.hash('hr123456', 10), role: 'hr' });
+
+    await hrAgent.post('/api/auth/login').send({ username: 'hr-user', password: 'hr123456' });
+
+    const res = await hrAgent.get('/api/menu-items');
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
   });
 });

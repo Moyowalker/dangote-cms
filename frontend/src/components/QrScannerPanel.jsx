@@ -1,11 +1,77 @@
 import React, { useEffect, useRef, useState } from 'react';
+import jsQR from 'jsqr';
 
 function getBarcodeDetectorClass() {
   return window.BarcodeDetector || null;
 }
 
 function isScannerSupported() {
-  return Boolean(getBarcodeDetectorClass() && navigator.mediaDevices?.getUserMedia);
+  return Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+function createJsQrDetector() {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (!context) {
+    throw new Error('Camera preview is unavailable. Use QR token paste or badge lookup on this device.');
+  }
+
+  return {
+    async detect(videoElement) {
+      const width = videoElement.videoWidth || videoElement.clientWidth;
+      const height = videoElement.videoHeight || videoElement.clientHeight;
+
+      if (!width || !height) {
+        return [];
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(videoElement, 0, 0, width, height);
+
+      const imageData = context.getImageData(0, 0, width, height);
+      const match = jsQR(imageData.data, imageData.width, imageData.height);
+
+      return match?.data ? [{ rawValue: match.data }] : [];
+    }
+  };
+}
+
+function createQrDetector() {
+  const BarcodeDetectorClass = getBarcodeDetectorClass();
+
+  if (BarcodeDetectorClass) {
+    try {
+      return new BarcodeDetectorClass({ formats: ['qr_code'] });
+    } catch {
+      return createJsQrDetector();
+    }
+  }
+
+  return createJsQrDetector();
+}
+
+function getScannerStartErrorMessage(error) {
+  if (!error) {
+    return 'Unable to start the camera scanner on this device.';
+  }
+
+  switch (error.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Camera access was blocked. Allow camera permission in Safari settings for this site, then retry.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No camera was found on this device. Use QR token paste or badge lookup instead.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'The camera is busy or unavailable. Close other apps using the camera, then retry.';
+    case 'OverconstrainedError':
+      return 'This camera mode is not supported on the device. Retry and Safari will use the available camera.';
+    default:
+      return error.message || 'Unable to start the camera scanner on this device.';
+  }
 }
 
 export default function QrScannerPanel({ open, onClose, onDetected }) {
@@ -86,8 +152,7 @@ export default function QrScannerPanel({ open, onClose, onDetected }) {
       setMessage('Requesting camera access...');
 
       try {
-        const BarcodeDetectorClass = getBarcodeDetectorClass();
-        detectorRef.current = new BarcodeDetectorClass({ formats: ['qr_code'] });
+        detectorRef.current = createQrDetector();
 
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -115,7 +180,7 @@ export default function QrScannerPanel({ open, onClose, onDetected }) {
         frameHandleRef.current = window.requestAnimationFrame(scanFrame);
       } catch (error) {
         setStatus('error');
-        setMessage(error.message || 'Unable to start the camera scanner on this device.');
+        setMessage(getScannerStartErrorMessage(error));
         await stopScanner();
       }
     }

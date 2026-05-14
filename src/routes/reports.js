@@ -4,7 +4,6 @@ const { Employee, MealRecord } = require('../database');
 const { requireReportViewer } = require('../middleware/auth');
 const { sendError } = require('../utils/apiResponse');
 const { getPagination, paginateArray } = require('../utils/pagination');
-const { getAuditLogById, listAuditLogs } = require('../services/auditService');
 const { buildDailyReport, buildFailureReport } = require('../services/reportService');
 
 const router = express.Router();
@@ -147,42 +146,6 @@ router.get('/failures', requireReportViewer, async (req, res) => {
       total: details.length,
       pagination: paginated.pagination
     });
-  } catch (err) {
-    console.error(err);
-    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
-  }
-});
-
-router.get('/audit', requireReportViewer, async (req, res) => {
-  try {
-    const audit = await listAuditLogs(req.query || {});
-    const { hasPagination, page, limit } = getPagination(req.query);
-
-    if (!hasPagination) {
-      return res.json(audit);
-    }
-
-    const paginated = paginateArray(audit.entries, page, limit);
-    return res.json({
-      total: audit.total,
-      summary: audit.summary,
-      entries: paginated.data,
-      pagination: paginated.pagination
-    });
-  } catch (err) {
-    console.error(err);
-    sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');
-  }
-});
-
-router.get('/audit/:id', requireReportViewer, async (req, res) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return sendError(res, 404, 'Audit log entry not found', 'NOT_FOUND');
-    }
-
-    const entry = await getAuditLogById(req.params.id);
-    return res.json(entry);
   } catch (err) {
     console.error(err);
     sendError(res, err.status || 500, err.message || 'Internal server error', err.code || 'INTERNAL_ERROR');

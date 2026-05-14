@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { EMPLOYEE_ROLE, canAccessHelpDesk, canAccessOfflineActivity, canViewWorkforce, isReportViewerRole, isVendorRole } from '../auth/roles';
+import { EMPLOYEE_ROLE, canAccessHelpDesk, canAccessOfflineActivity, canManageMenu, canViewWorkforce, isReportViewerRole, isVendorRole } from '../auth/roles';
 import BrandLogo from './BrandLogo';
 
 export default function Navbar() {
@@ -27,7 +27,7 @@ export default function Navbar() {
         )}
         {isReportViewerRole(user.role) && (
           <>
-            <li><NavLink to="/menu">Menu Items</NavLink></li>
+            {canManageMenu(user.role) ? <li><NavLink to="/menu">Menu Items</NavLink></li> : null}
             <li><NavLink to="/reports">Reports</NavLink></li>
             <li><NavLink to="/audit">Audit Trail</NavLink></li>
             <li><NavLink to="/reconciliation">Reconciliation</NavLink></li>
